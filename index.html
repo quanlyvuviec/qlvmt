@@ -1921,7 +1921,28 @@ const saveStore=async(k,v)=>{
 };
 const loadStore=async(k,fb)=>{
   try{
-    const r=await window.storage.get(k);
+    let r=await window.storage.get(k);
+    // ── Tự động "di trú" dữ liệu cục bộ cũ lên Firebase khi mới kết nối ──
+    // window.storage.get() khi Firebase đã kết nối CHỈ đọc Firestore (không
+    // đọc localStorage) — đúng để tránh dữ liệu cũ "hồi sinh". NHƯNG nếu
+    // dữ liệu (VD: Danh mục Khu phố, Danh sách cán bộ) đã được nhập TỪ TRƯỚC
+    // khi cấu hình Firebase, nó vẫn đang nằm im trong localStorage của máy
+    // này và CHƯA TỪNG được đẩy lên Firestore (vì chưa có thao tác lưu nào
+    // xảy ra sau khi kết nối). Nếu bỏ qua, người dùng sẽ thấy danh mục
+    // "biến mất trống trơn" ngay sau khi bật đồng bộ Firebase, dù dữ liệu
+    // vẫn còn nguyên trên máy — đây chính là nguyên nhân khiến khu phố/cán bộ
+    // có vẻ như "không đồng bộ". Xử lý: nếu Firestore chưa có doc cho key này
+    // mà localStorage máy này lại có, tự động đẩy bản cục bộ đó lên Firebase.
+    if(!r&&_fbDb){
+      const local=localStorage.getItem(k);
+      if(local!=null){
+        try{
+          await window.storage.set(k,local);
+          r={value:local};
+          console.info("Đã tự động đồng bộ dữ liệu cục bộ cũ lên Firebase cho key:",k);
+        }catch(e){console.warn("Không thể tự động đồng bộ dữ liệu cũ lên Firebase cho key",k,e);}
+      }
+    }
     const json=r?r.value:JSON.stringify(fb);
     _trackForLocalSync(k,json); // nạp cả các key chưa từng sửa trong phiên vào bản sao lưu cục bộ
     return r?JSON.parse(r.value):fb;
@@ -8509,6 +8530,10 @@ function CauHinhPage({toast,onConfigChange}){
   const [testLoading,setTestLoading]=useState(false);
   const [localFileName,setLocalFileName]=useState(null);
   const [localBusy,setLocalBusy]=useState(false);
+  // Khoá trang Cấu hình bằng mật khẩu đăng nhập (dùng chung với mật khẩu vào app)
+  const [unlocked,setUnlocked]=useState(false);
+  const [lockPwd,setLockPwd]=useState("");
+  const [lockErr,setLockErr]=useState("");
 
   useEffect(()=>{
     (async()=>{
@@ -8516,6 +8541,35 @@ function CauHinhPage({toast,onConfigChange}){
       setLocalFileName(h?h.name:null);
     })();
   },[]);
+
+  // ── Tự động lưu cấu hình Firebase ngay khi người dùng nhập, KHÔNG cần bấm nút ──
+  // Mỗi khi các trường Kết nối Firebase Firestore thay đổi, sau khi người dùng
+  // ngừng gõ ~900ms, bản nháp được lưu ngay vào localStorage (để không bao giờ
+  // mất khi đóng/mở lại trang), và nếu đã đủ 2 trường bắt buộc (API Key +
+  // Project ID) thì tự động kết nối + đăng nhập luôn, không cần bấm "Kết nối Firebase".
+  const isFirstFbRender=useRef(true);
+  const autoSaveFb=useRef(debounce(async(cfgToSave)=>{
+    const cfg=loadSysCfg();
+    saveSysCfg({...cfg,firebase:cfgToSave});
+    if(cfgToSave.apiKey&&cfgToSave.projectId){
+      const ok=initFirebase(cfgToSave);
+      if(ok){
+        if(cfgToSave.sharedEmail&&cfgToSave.sharedPassword){
+          setFbStatus("Đang đăng nhập tài khoản Firebase Auth (tự động lưu)...");
+          const authOk=await _fbAuthReady;
+          setFbStatus(authOk
+            ?"✅ Đã kết nối Firebase + đăng nhập thành công (đã tự động lưu)"
+            :"⚠️ Kết nối Firestore OK nhưng ĐĂNG NHẬP THẤT BẠI – kiểm tra Email/Mật khẩu.");
+        }else{
+          setFbStatus("Đã kết nối Firestore (đã tự động lưu) – CHƯA có tài khoản dùng chung");
+        }
+      }
+    }
+  },900)).current;
+  useEffect(()=>{
+    if(isFirstFbRender.current){isFirstFbRender.current=false;return;} // bỏ qua lần nạp ban đầu từ storage
+    autoSaveFb(fbCfg);
+  },[fbCfg]);
 
   const chonFileCucBo=async()=>{
     setLocalBusy(true);
@@ -8622,6 +8676,29 @@ function CauHinhPage({toast,onConfigChange}){
   ];
 
   const cardStyle={background:"#fff",borderRadius:14,border:"1px solid var(--border)",padding:"20px 22px",marginBottom:20,boxShadow:"var(--shadow)"};
+
+  // ── Màn hình khoá: yêu cầu đúng mật khẩu đăng nhập (getAdminPwd()) trước khi vào Cấu hình ──
+  if(!unlocked){
+    const tryUnlock=()=>{
+      if(lockPwd===getAdminPwd()){setUnlocked(true);setLockErr("");}
+      else{setLockErr("Mật khẩu không đúng");setLockPwd("");}
+    };
+    return(
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh"}}>
+        <div style={{background:"#fff",borderRadius:14,border:"1px solid var(--border)",boxShadow:"var(--shadow)",padding:"32px 30px",width:340,textAlign:"center"}}>
+          <div style={{fontSize:34,marginBottom:10}}>🔒</div>
+          <div style={{fontWeight:700,fontSize:15,color:"var(--navy)",marginBottom:6}}>Cấu hình hệ thống được khoá</div>
+          <div style={{fontSize:12.5,color:"var(--muted)",marginBottom:16}}>Nhập mật khẩu đăng nhập (giống mật khẩu vào ứng dụng) để tiếp tục.</div>
+          <input className="fi" type="password" autoFocus value={lockPwd}
+            onChange={e=>{setLockPwd(e.target.value);setLockErr("");}}
+            onKeyDown={e=>e.key==="Enter"&&tryUnlock()}
+            placeholder="Nhập mật khẩu..." style={{textAlign:"center",marginBottom:8}}/>
+          {lockErr&&<div style={{color:"#dc2626",fontSize:12,fontWeight:600,marginBottom:8}}>{lockErr}</div>}
+          <button className="btn btn-primary" style={{width:"100%"}} onClick={tryUnlock}>Mở khoá</button>
+        </div>
+      </div>
+    );
+  }
 
   return(
     <div>
