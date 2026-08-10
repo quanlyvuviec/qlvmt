@@ -1991,6 +1991,50 @@ function matchesNguoiSearch(r,search){
   }
   return false;
 }
+// ══════════════════════════════════════════════════════════════
+// THỐNG KÊ "KHU PHỐ NÓNG" – khu phố nào có nhiều đối tượng ma túy nhất
+// – Nguồn 1 (chính, chính xác nhất): trường "Khu phố/ấp/khu dân cư
+//   (theo phương án sắp xếp mới)" (khu_pho_moi) đã được gán trực tiếp
+//   cho từng đối tượng khi nhập liệu.
+// – Nguồn 2 (bổ sung): với các đối tượng CHƯA gán khu_pho_moi khớp với
+//   danh mục hiện tại, dò tên khu phố xuất hiện trong "Nơi thường trú"
+//   (hktt) hoặc "Nơi ở hiện tại" (noi_o_ht) — để không bỏ sót các
+//   trường hợp nhập địa chỉ dạng tự do chưa chọn đúng khu phố ở danh mục.
+// So khớp không phân biệt hoa/thường và không dấu để tránh lệch chính tả.
+// ══════════════════════════════════════════════════════════════
+function computeKhuPhoHotspot(khuPho,subjects){
+  const norm=s=>stripDiacriticsVN(s).toLowerCase().trim();
+  const stats=(khuPho||[]).map(kp=>({
+    id:kp.id,ten:kp.ten_moi||kp.ten_cu||"(chưa đặt tên)",ten_cu:kp.ten_cu||"",
+    quanLy:0,theoCuTru:0,
+    perNhom:{su_dung:0,nghien:0,sau_cai:0,vppl:0,nghi_van:0,suu_tra:0},
+  }));
+  const byName=new Map(stats.filter(s=>norm(s.ten)).map(s=>[norm(s.ten),s]));
+  let khongXacDinh=0;
+  (subjects||[]).forEach(r=>{
+    const nhomList=r.nhom||[];
+    const bump=s=>nhomList.forEach(n=>{if(s.perNhom[n]!=null)s.perNhom[n]++;});
+    const assignedName=norm(r.khu_pho_moi||"");
+    if(assignedName&&byName.has(assignedName)){
+      const s=byName.get(assignedName);s.quanLy++;bump(s);return;
+    }
+    const addr=norm((r.hktt||"")+" "+(r.noi_o_ht||""));
+    let hit=null;
+    if(addr){
+      for(const s of stats){
+        const n=norm(s.ten);
+        if(n&&n.length>=3&&addr.includes(n)){hit=s;break;}
+      }
+    }
+    if(hit){hit.theoCuTru++;bump(hit);}
+    else khongXacDinh++;
+  });
+  stats.forEach(s=>{s.tong=s.quanLy+s.theoCuTru;});
+  stats.sort((a,b)=>b.tong-a.tong);
+  const tongCoXacDinh=stats.reduce((a,s)=>a+s.tong,0);
+  const soKpCoDT=stats.filter(s=>s.tong>0).length;
+  return{stats,khongXacDinh,tongCoXacDinh,soKpCoDT,tongKp:stats.length};
+}
 const filterActive=(list,from,to,dkey="ngay_vao_so")=>{
   const active=list.filter(r=>!r.da_loai);
   if(!from&&!to)return active;
@@ -4569,6 +4613,13 @@ function Dashboard({data}){
   const st=(data.suu_tra||dt.filter(r=>(r.nhom||[]).includes("suu_tra"))).filter(r=>!r.da_loai);
   const vu=data.vu_an.filter(r=>!r.da_loai);
   const sdDN=sd.filter(r=>r.cap_nhat_pm==="Đã nhập").length,ngDN=ng.filter(r=>r.cap_nhat_pm==="Đã nhập").length,scDN=sc.filter(r=>r.cap_nhat_pm==="Đã nhập").length;
+  const khuPho=data.khu_pho||[];
+  const activeSubjects=useMemo(()=>dt.filter(r=>!r.da_loai),[dt]);
+  const hotspot=useMemo(()=>computeKhuPhoHotspot(khuPho,activeSubjects),[khuPho,activeSubjects]);
+  const topKp=hotspot.stats[0];
+  const maxTong=topKp?topKp.tong:0;
+  const NHOM_CLR={su_dung:"var(--g-sd)",nghien:"var(--g-ng)",sau_cai:"var(--g-sc)",vppl:"var(--g-vp)",nghi_van:"var(--g-nv)",suu_tra:"var(--g-st)"};
+  const NHOM_ICON={su_dung:"💊",nghien:"⚕️",sau_cai:"🏠",vppl:"⚖️",nghi_van:"🔍",suu_tra:"📂"};
   return(
     <div>
       <div className="page-header"><div><div className="page-title">🏠 Tổng quan</div><div className="page-sub">{CONFIG.donVi} · {CONFIG.version}</div></div></div>
@@ -4635,6 +4686,97 @@ function Dashboard({data}){
               <span style={{fontSize:20,fontWeight:800,color:"var(--navy)"}}>{(data.su_dung||[]).filter(r=>r.da_loai).length+(data.nghien||[]).filter(r=>r.da_loai).length+(data.sau_cai||[]).filter(r=>r.da_loai).length+(data.vppl||[]).filter(r=>r.da_loai).length+(data.nghi_van||[]).filter(r=>r.da_loai).length+(data.suu_tra||[]).filter(r=>r.da_loai).length}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ══════ Khu phố có nhiều đối tượng ma túy nhất ══════ */}
+      <div className="card" style={{marginTop:16}}>
+        <div className="card-hd" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+          <h3>🗺️ Khu phố có nhiều đối tượng ma túy nhất</h3>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <span className="badge badge-navy">{hotspot.soKpCoDT}/{hotspot.tongKp} khu phố có ghi nhận</span>
+            {hotspot.khongXacDinh>0&&
+              <span className="badge" style={{background:"#fff7ed",color:"var(--orange)",border:"1px solid #fed7aa"}}>
+                ⚠️ {hotspot.khongXacDinh} đối tượng chưa xác định khu phố
+              </span>}
+          </div>
+        </div>
+        <div style={{padding:"16px 18px"}}>
+          {khuPho.length===0?(
+            <div style={{textAlign:"center",padding:"26px 10px",color:"var(--muted)"}}>
+              <div style={{fontSize:40,marginBottom:8,opacity:.4}}>🏘️</div>
+              <p style={{fontWeight:600,marginBottom:4}}>Chưa có danh mục Khu phố</p>
+              <p style={{fontSize:12.5}}>Vào mục <b>"Danh mục Khu phố"</b> để khai báo các khu phố/ấp trước khi xem thống kê.</p>
+            </div>
+          ):maxTong===0?(
+            <div style={{textAlign:"center",padding:"26px 10px",color:"var(--muted)"}}>
+              <div style={{fontSize:40,marginBottom:8,opacity:.4}}>✅</div>
+              <p style={{fontWeight:600}}>Chưa ghi nhận đối tượng ma túy tại khu phố nào</p>
+            </div>
+          ):(
+          <>
+            {/* Khu phố "nóng" nhất — nổi bật */}
+            <div style={{
+              display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderRadius:14,marginBottom:20,
+              background:"linear-gradient(135deg,#fff1f0 0%,#fff8f0 100%)",border:"1.5px solid #ffccc7",
+              boxShadow:"0 2px 10px rgba(198,40,40,.08)"
+            }}>
+              <div style={{fontSize:38,lineHeight:1}}>🔥</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11.5,fontWeight:700,color:"var(--red)",letterSpacing:.3,marginBottom:2}}>KHU PHỐ NÓNG NHẤT</div>
+                <div style={{fontSize:19,fontWeight:800,color:"var(--navy)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {topKp.ten}{topKp.ten_cu?<span style={{fontSize:12,fontWeight:500,color:"var(--muted)"}}> (cũ: {topKp.ten_cu})</span>:null}
+                </div>
+                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>
+                  {topKp.quanLy} theo khu phố quản lý{topKp.theoCuTru>0?` · ${topKp.theoCuTru} suy luận từ địa chỉ cư trú`:""}
+                </div>
+              </div>
+              <div style={{textAlign:"center",flexShrink:0}}>
+                <div style={{fontSize:34,fontWeight:800,color:"var(--red)"}}>{topKp.tong}</div>
+                <div style={{fontSize:11,color:"var(--muted)",fontWeight:600}}>đối tượng</div>
+              </div>
+            </div>
+
+            {/* Bảng xếp hạng toàn bộ khu phố */}
+            <div>
+              {hotspot.stats.filter(s=>s.tong>0).map((s,i)=>{
+                const w=maxTong?Math.max(4,Math.round(s.tong/maxTong*100)):0;
+                const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":null;
+                const barClr=i===0?"var(--red)":i===1?"var(--orange)":i===2?"var(--gold)":"var(--g-sc)";
+                return(
+                  <div key={s.id} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,gap:8}}>
+                      <span style={{fontSize:13,fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                        <span style={{width:20,textAlign:"center",flexShrink:0}}>{medal||(i+1)}</span>
+                        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.ten}</span>
+                      </span>
+                      <span style={{fontSize:13,fontWeight:800,color:barClr,flexShrink:0}}>{s.tong}</span>
+                    </div>
+                    <div className="progress-bar" style={{marginLeft:26}}>
+                      <div className="progress-bar-fill" style={{width:w+"%",background:barClr}}/>
+                    </div>
+                    <div style={{display:"flex",gap:10,marginLeft:26,marginTop:4,flexWrap:"wrap"}}>
+                      {Object.entries(s.perNhom).filter(([,n])=>n>0).map(([nk,n])=>(
+                        <span key={nk} style={{fontSize:10.5,fontWeight:600,color:NHOM_CLR[nk],display:"flex",alignItems:"center",gap:3}}>
+                          {NHOM_ICON[nk]} {n}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {hotspot.stats.filter(s=>s.tong===0).length>0&&
+              <div style={{fontSize:11.5,color:"var(--muted2)",marginTop:8,paddingTop:10,borderTop:"1px dashed var(--border)"}}>
+                {hotspot.stats.filter(s=>s.tong===0).length} khu phố chưa ghi nhận đối tượng nào: {" "}
+                {hotspot.stats.filter(s=>s.tong===0).map(s=>s.ten).join(", ")}
+              </div>}
+          </>
+          )}
+        </div>
+        <div style={{padding:"0 18px 16px",fontSize:11,color:"var(--muted)",lineHeight:1.6}}>
+          💡 Số liệu tính trên tất cả đối tượng đang quản lý (6 nhóm, đã loại trừ đối tượng đã thanh loại), ưu tiên trường
+          <b> Khu phố quản lý</b> đã gán trực tiếp; nếu chưa gán, hệ thống tự dò tên khu phố trong <b>Nơi thường trú</b> / <b>Nơi ở hiện tại</b>.
         </div>
       </div>
     </div>
@@ -8666,6 +8808,67 @@ function CauHinhPage({toast,onConfigChange}){
     toast("Đã xóa cấu hình Firebase. Hệ thống dùng localStorage.","info");
   };
 
+  // ── Nạp / xuất cấu hình Firebase bằng file .txt ──
+  // Dùng cho trường hợp trình duyệt (đặc biệt trên điện thoại) không giữ được
+  // localStorage giữa các lần mở file (Safari/WebView trong app Zalo, Messenger...
+  // thường xoá dữ liệu trang khi đóng, hoặc mỗi lần mở lại là 1 bản file tải mới).
+  // Giải pháp: xuất cấu hình đã nhập đúng 1 lần ra 1 file .txt nhỏ, lưu trong máy/Drive,
+  // rồi mỗi lần mở app chỉ cần bấm "Nạp từ file .txt" để tự điền + tự kết nối lại,
+  // không cần gõ tay từng trường nữa.
+  const fbTxtFileRef=useRef();
+  const FB_TXT_KEYS=["apiKey","authDomain","projectId","storageBucket","messagingSenderId","appId","sharedEmail","sharedPassword"];
+  const parseFbTxt=(text)=>{
+    const out={};
+    text.split(/\r?\n/).forEach(line=>{
+      const s=line.trim();
+      if(!s||s.startsWith("#")||s.startsWith("//"))return;
+      const m=s.match(/^([A-Za-z0-9_]+)\s*[:=]\s*(.*)$/);
+      if(!m)return;
+      let key=m[1].trim();
+      let val=m[2].trim();
+      if((val.startsWith('"')&&val.endsWith('"'))||(val.startsWith("'")&&val.endsWith("'")))val=val.slice(1,-1);
+      // chấp nhận cả tên viết hoa/thường/có gạch dưới, map về đúng key trong fbCfg
+      const found=FB_TXT_KEYS.find(k=>k.toLowerCase()===key.toLowerCase()||key.toLowerCase()===k.replace(/([A-Z])/g,"_$1").toLowerCase());
+      if(found)out[found]=val;
+    });
+    return out;
+  };
+  const importFbFromTxtFile=(file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      try{
+        const parsed=parseFbTxt(String(e.target.result||""));
+        const gotKeys=Object.keys(parsed);
+        if(gotKeys.length===0){
+          toast("Không đọc được trường cấu hình nào trong file. Kiểm tra định dạng key=value.","error");
+          return;
+        }
+        setFbCfg(p=>({...p,...parsed}));
+        toast(`Đã nạp ${gotKeys.length} trường từ file .txt — đang tự động kết nối...`,"success");
+      }catch(err){
+        toast("Lỗi đọc file .txt: "+err.message,"error");
+      }
+    };
+    reader.onerror=()=>toast("Không thể đọc file .txt đã chọn.","error");
+    reader.readAsText(file,"utf-8");
+  };
+  const exportFbToTxtFile=()=>{
+    const lines=FB_TXT_KEYS.map(k=>`${k}=${fbCfg[k]||""}`);
+    const content="# Cấu hình Firebase Firestore — "+(donVi||"Đơn vị")+"\n"
+      +"# Lưu file này lại (điện thoại/Drive/USB); mỗi lần mở app, vào Cấu hình hệ thống\n"
+      +"# → bấm \"Nạp từ file .txt\" và chọn lại file này để tự điền + tự kết nối.\n"
+      +lines.join("\n")+"\n";
+    const blob=new Blob([content],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="cauhinh_firebase.txt";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("Đã xuất file cauhinh_firebase.txt","success");
+  };
+
   const fbFields=[
     {k:"apiKey",lbl:"API Key *"},
     {k:"authDomain",lbl:"Auth Domain"},
@@ -8787,6 +8990,23 @@ function CauHinhPage({toast,onConfigChange}){
             {testLoading?"⏳ Đang kiểm tra...":"🔍 Kiểm tra kết nối"}
           </button>
           <button className="btn btn-ghost" onClick={clearFb}>✕ Xóa cấu hình Firebase</button>
+        </div>
+
+        <div style={{borderTop:"1px dashed var(--border)",marginTop:16,paddingTop:14}}>
+          <div style={{fontWeight:700,fontSize:13,color:"var(--navy)",marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+            📄 Nạp / xuất cấu hình bằng file .txt <span className="badge badge-navy" style={{fontSize:10}}>khuyến nghị cho điện thoại</span>
+          </div>
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,lineHeight:1.6}}>
+            Nếu trình duyệt trên điện thoại không giữ được cấu hình sau khi đóng app (Zalo/Messenger/Safari xoá dữ liệu trang),
+            hãy <b>xuất ra file .txt 1 lần</b>, lưu vào máy/Drive. Từ lần sau, mỗi khi mở app chỉ cần bấm <b>"Nạp từ file .txt"</b>
+            và chọn lại file đó — hệ thống sẽ tự điền đủ 8 trường và tự kết nối lại, không cần gõ tay.
+          </div>
+          <input ref={fbTxtFileRef} type="file" accept=".txt,text/plain" style={{display:"none"}}
+            onChange={e=>{importFbFromTxtFile(e.target.files&&e.target.files[0]);e.target.value="";}}/>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn btn-primary" onClick={()=>fbTxtFileRef.current&&fbTxtFileRef.current.click()}>📂 Nạp từ file .txt</button>
+            <button className="btn btn-blue" onClick={exportFbToTxtFile}>💾 Xuất ra file .txt</button>
+          </div>
         </div>
         <p style={{fontSize:11.5,color:"var(--muted)",marginTop:10}}>
           ⚠️ Sau khi kết nối Firebase, tải lại trang để dữ liệu đọc/ghi từ Firestore. Nếu không cấu hình, hệ thống vẫn hoạt động bình thường với localStorage trên máy này.
