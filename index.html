@@ -220,7 +220,7 @@ table{width:100%;border-collapse:collapse;font-size:12px}
 thead{position:sticky;top:0;z-index:10}
 th{
   background:linear-gradient(135deg,#0c1b4d 0%,#152158 100%);
-  color:rgba(255,255,255,.9);padding:9px 11px;text-align:left;
+  color:rgba(255,255,255,.9);padding:9px 11px;text-align:center;
   white-space:nowrap;font-weight:600;font-size:11px;
   border-right:1px solid rgba(255,255,255,.08);
 }
@@ -4393,6 +4393,13 @@ function DataTable({title,icon,records,allRecords,onAdd,onEdit,onDelete,onLoai,o
   const [pg,setPg]=useState(1);
   const PER=15;
   useEffect(()=>{setPg(1);},[search,records.length,tabLoai]);
+  // Tự xoá bộ lọc tìm kiếm khi có bản ghi mới được thêm (số lượng tăng), để bản ghi
+  // mới không bị "mất tích" do đang lọc theo từ khoá không khớp — tránh phải bấm F5.
+  const prevLenRef=useRef(records.length);
+  useEffect(()=>{
+    if(records.length>prevLenRef.current&&search)setSearch("");
+    prevLenRef.current=records.length;
+  },[records.length]);
   const active=records;
   const loai=(allRecords||[]).filter(r=>r.da_loai);
   const show=tabLoai?loai:active;
@@ -4415,7 +4422,7 @@ function DataTable({title,icon,records,allRecords,onAdd,onEdit,onDelete,onLoai,o
         <div className="btn-grp">
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
-            <input className="srch" placeholder="Tìm kiếm..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_1_nofill" placeholder="Tìm kiếm..." value={search} onChange={e=>setSearch(e.target.value)}/>
           </div>
           {!tabLoai&&<button className="btn btn-primary btn-sm" onClick={onAdd}>＋ Thêm mới</button>}
         </div>
@@ -5090,7 +5097,7 @@ function PlaceholderModal({onClose,toast}){
           <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16}}>✕</button>
         </div>
         <div style={{padding:"12px 20px",borderBottom:"1px solid #eee",display:"flex",gap:10,flexShrink:0}}>
-          <input className="srch" style={{flex:1}} placeholder="Tìm theo tên trường hoặc nhãn..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_2_nofill" style={{flex:1}} placeholder="Tìm theo tên trường hoặc nhãn..." value={search} onChange={e=>setSearch(e.target.value)}/>
           <button className="btn btn-green btn-sm" onClick={copyAll}>📋 Copy tất cả</button>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 20px 20px"}}>
@@ -7005,7 +7012,7 @@ function DaLoaiDataboardPage({doiTuong,setDoiTuong,toast}){
       {/* Tìm kiếm + lọc */}
       <div className="card" style={{marginBottom:16}}>
         <div style={{padding:"14px 18px",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-          <input className="srch" style={{flex:1,minWidth:220}} placeholder="🔍 Tìm theo họ tên hoặc số CCCD..."
+          <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_3_nofill" style={{flex:1,minWidth:220}} placeholder="🔍 Tìm theo họ tên hoặc số CCCD..."
             value={search} onChange={e=>setSearch(e.target.value)}/>
           <select className="fi" style={{width:"auto",minWidth:200}} value={filterNhom} onChange={e=>setFilterNhom(e.target.value)}>
             <option value="all">Tất cả các nhóm</option>
@@ -7234,6 +7241,14 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
   const PER=15;
   const importRef=useRef();
   const [importPreview,setImportPreview]=useState(null); // {newRows,updatable,fileName}
+  const active=doiTuong.filter(r=>!r.da_loai);
+  // Tự xoá bộ lọc tìm kiếm khi có đối tượng mới được thêm (số đang QL tăng),
+  // để đối tượng mới không bị "mất tích" do đang lọc theo từ khoá không khớp.
+  const prevActiveLenRef=useRef(active.length);
+  useEffect(()=>{
+    if(active.length>prevActiveLenRef.current&&search)setSearch("");
+    prevActiveLenRef.current=active.length;
+  },[active.length]);
 
   // Normalize name for duplicate detection
   const normName=n=>String(n||"").toLowerCase().replace(/\s+/g," ").trim();
@@ -7353,7 +7368,6 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
     }catch(e){toast("❌ Lỗi lưu dữ liệu nhập từ Excel: "+e.message,"error");}
   };
 
-  const active=doiTuong.filter(r=>!r.da_loai);
   const loai=doiTuong.filter(r=>r.da_loai);
   const base=tabLoai?loai:active;
 
@@ -7416,7 +7430,7 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
         <div className="btn-grp">
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
-            <input className="srch" placeholder="Tìm kiếm..." value={search} onChange={e=>{setSearch(e.target.value);setPg(1);}}/>
+            <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_4_nofill" placeholder="Tìm kiếm..." value={search} onChange={e=>{setSearch(e.target.value);setPg(1);}}/>
           </div>
           {!tabLoai&&<button className="btn btn-green btn-sm" onClick={()=>importRef.current?.click()}>📥 Nhập từ Excel TB136</button>}
           {!tabLoai&&<button className="btn btn-primary btn-sm" onClick={()=>setForm({mode:"add",rec:null})}>＋ Thêm đối tượng</button>}
@@ -7619,6 +7633,13 @@ function GroupViewPage({nhomId,doiTuong,setDoiTuong,dateRange,toast,khuPho,setKh
   const active=inGroup.filter(r=>!r.da_loai);
   const loai=inGroup.filter(r=>r.da_loai);
   const base=tabLoai?loai:active;
+  // Tự xoá bộ lọc tìm kiếm khi có đối tượng mới được thêm vào nhóm này (số đang
+  // QL tăng), để đối tượng mới không bị "mất tích" do đang lọc theo từ khoá cũ.
+  const prevActiveLenRef=useRef(active.length);
+  useEffect(()=>{
+    if(active.length>prevActiveLenRef.current&&search)setSearch("");
+    prevActiveLenRef.current=active.length;
+  },[active.length]);
 
   // Đối tượng ĐÃ bị loại khỏi RIÊNG nhóm này (khi trước đó thuộc nhiều nhóm) nhưng vẫn còn
   // hoạt động ở (các) nhóm khác — không tính vào "Tổng"/"đã loại" phía trên vì không thuộc
@@ -7767,7 +7788,7 @@ function GroupViewPage({nhomId,doiTuong,setDoiTuong,dateRange,toast,khuPho,setKh
         <div className="btn-grp">
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
-            <input className="srch" placeholder="Tìm kiếm..." value={search} onChange={e=>{setSearch(e.target.value);setPg(1);}}/>
+            <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_5_nofill" placeholder="Tìm kiếm..." value={search} onChange={e=>{setSearch(e.target.value);setPg(1);}}/>
           </div>
           {!tabLoai&&canImportHD26&&<>
             <input ref={importRef} type="file" accept=".xlsx,.xls" style={{display:"none"}}
@@ -9616,6 +9637,10 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
     else next=data.map(r=>r._id===form.rec._id?{...r,...rec}:r);
     try{
       await saveStore(storeKey,next);setData(next);setForm(null);
+      // Xoá bộ lọc tìm kiếm khi vừa thêm mới, để bản ghi mới không bị "biến mất"
+      // nếu ô tìm kiếm đang có sẵn từ khoá (gõ dở hoặc trình duyệt tự điền) không
+      // khớp với bản ghi vừa nhập — trước đây phải bấm F5 mới thấy lại được.
+      if(form.mode==="add"&&search)setSearch("");
       toast(form.mode==="add"?"✅ Đã thêm vụ việc!":"✅ Đã cập nhật vụ việc!","success");
     }catch(e){toast("❌ Lỗi lưu: "+e.message,"error");}
   };
@@ -9654,7 +9679,7 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
         <div className="btn-grp">
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
-            <input className="srch" placeholder="Tìm theo mã vụ việc / tên đối tượng / CCCD..." value={search} onChange={e=>setSearch(e.target.value)}/>
+            <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_6_nofill" placeholder="Tìm theo mã vụ việc / tên đối tượng / CCCD..." value={search} onChange={e=>setSearch(e.target.value)}/>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={()=>setExportOpen(true)}>📊 Xuất báo cáo thống kê</button>
           <button className="btn btn-primary btn-sm" onClick={()=>setForm({mode:"add",rec:null})}>＋ Thêm vụ việc</button>
@@ -9670,8 +9695,17 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
               <th style={{minWidth:200}}>Loại vụ việc</th>
               <th style={{minWidth:200}}>Nội dung vụ việc</th>
               <th style={{minWidth:160}}>Đối tượng</th>
-              <th style={{minWidth:140}}>Loại ma túy sử dụng</th>
-              <th style={{minWidth:120}}>ĐTV thụ lý chính</th>
+              {storeKey===KEYS.bat_dia_ban?(
+                <>
+                  <th style={{minWidth:160}}>Đơn vị bắt/mời</th>
+                  <th style={{minWidth:110}}>Ngày bắt/mời</th>
+                </>
+              ):(
+                <>
+                  <th style={{minWidth:110}}>Ngày bắt/mời</th>
+                  <th style={{minWidth:120}}>ĐTV thụ lý chính</th>
+                </>
+              )}
               <th style={{width:120,textAlign:"center"}}>Thao tác</th>
             </tr></thead>
             <tbody>
@@ -9695,13 +9729,17 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
                         {(r.doi_tuong||[]).map((s,si)=><span key={si} style={{fontWeight:600,color:"var(--navy)"}}>{s.ho_ten||"—"}</span>)}
                       </div>}
                   </td>
-                  <td>
-                    {[...new Set((r.doi_tuong||[]).map(s=>dv(s,"loai_ma_tuy")).filter(Boolean))].map((mt,mi)=>(
-                      <span key={mi} className="badge badge-red" style={{marginRight:4,marginBottom:2,display:"inline-block"}}>{mt}</span>
-                    ))}
-                    {(r.doi_tuong||[]).every(s=>!dv(s,"loai_ma_tuy"))&&<span style={{color:"#cbd5e1"}}>—</span>}
-                  </td>
-                  <td>{r.dtv_thu_ly_chinh||"—"}</td>
+                  {storeKey===KEYS.bat_dia_ban?(
+                    <>
+                      <td>{r.don_vi_bat_moi||"—"}</td>
+                      <td><DateChip val={r.ngay_bat_moi}/></td>
+                    </>
+                  ):(
+                    <>
+                      <td><DateChip val={r.ngay_bat_moi}/></td>
+                      <td>{r.dtv_thu_ly_chinh||"—"}</td>
+                    </>
+                  )}
                   <td><div className="actions">
                     <button className="btn btn-sm btn-icon act-view" title="Xem chi tiết" onClick={()=>setViewRec(r)}>👁</button>
                     <button className="btn btn-sm btn-icon act-edit" title="Sửa (yêu cầu mật khẩu)" onClick={()=>setPwdAction({type:"edit",rec:r})}>✏️</button>
