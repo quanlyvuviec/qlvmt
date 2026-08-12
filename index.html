@@ -661,11 +661,18 @@ function _lsClear(k){try{localStorage.removeItem(k);}catch{}}
 // nhịp — phần lớn là lỗi THOÁNG QUA, tự hết sau 1-2 giây. Bọc mọi lệnh
 // Firestore bằng cơ chế tự thử lại để 1 lần timeout ngắn không làm cả app
 // báo lỗi ngay, thay vì bắt người dùng phải tự bấm tải lại trang.
+function _isTransientNetErr(err){
+  // navigator.onLine===false là tín hiệu chắc chắn nhất: khi đó MỌI lỗi Firestore
+  // (kể cả "permission-denied" do chưa kịp đăng nhập Auth vì cũng cần mạng) đều
+  // thực chất là do mất mạng, không phải do sai cấu hình/quyền thật sự.
+  if(typeof navigator!=="undefined"&&navigator.onLine===false)return true;
+  return!!(err&&(err.code==="unavailable"||err.code==="deadline-exceeded"||err.code==="cancelled"||err.code==="internal"||/offline|network|failed to fetch/i.test(err.message||"")));
+}
 async function _fsRetry(fn,retries=2,delayMs=1500){
   for(let i=0;i<=retries;i++){
     try{return await fn();}
     catch(err){
-      const transient=err&&(err.code==="unavailable"||err.code==="deadline-exceeded"||/offline/i.test(err.message||""));
+      const transient=_isTransientNetErr(err);
       if(transient&&i<retries){await new Promise(r=>setTimeout(r,delayMs));continue;}
       throw err;
     }
@@ -673,9 +680,82 @@ async function _fsRetry(fn,retries=2,delayMs=1500){
 }
 
 // ── Trạng thái đồng bộ Cloud (dùng cho nút/badge hiển thị trên giao diện) ──
-// idle=đã đồng bộ xong, syncing=đang ghi lên Firebase, error=lần ghi gần nhất lỗi.
-window.__cloudSync={status:"idle",lastSyncAt:null,lastError:null};
+// idle=đã đồng bộ xong, syncing=đang ghi lên Firebase, error=lần ghi gần nhất lỗi
+// (không phải do mất mạng — VD sai quyền/cấu hình), offline=mất mạng, đang lưu
+// tạm cục bộ và chờ tự động đồng bộ lại khi có mạng trở lại.
+window.__cloudSync={status:"idle",lastSyncAt:null,lastError:null,pendingCount:0};
 function _cloudSyncMark(patch){Object.assign(window.__cloudSync,patch);}
+
+// ══════════════════════════════════════════════════════════════
+// HÀNG ĐỢI NGOẠI TUYẾN (OFFLINE OUTBOX)
+// Khi mất mạng, thay vì chặn thao tác lưu và báo lỗi, dữ liệu được:
+//  1) Lưu ngay vào localStorage (để không mất nếu tắt trình duyệt)
+//  2) Ghi vào file quan_ly_ma_tuy_backup.json trên ổ cứng (nếu đã gắn file
+//     backup — xem pickLocalSyncFile) qua _trackForLocalSync/writeLocalBackup
+//  3) Đưa vào "hàng đợi" — mỗi khi có mạng trở lại (sự kiện 'online' của
+//     trình duyệt, hoặc poll định kỳ mỗi 20s vì sự kiện 'online' không phải
+//     lúc nào cũng đáng tin), hệ thống tự động đẩy toàn bộ hàng đợi lên
+//     Firebase, KHÔNG cần người dùng thao tác gì thêm.
+// Chỉ những lỗi MẤT MẠNG mới được đưa vào hàng đợi; lỗi do sai quyền/cấu
+// hình Firebase vẫn báo lỗi ngay để người dùng biết mà khắc phục (tránh
+// hàng đợi bị kẹt mãi vì 1 lỗi không phải do mạng).
+// ══════════════════════════════════════════════════════════════
+const OUTBOX_KEY="cap:pending_outbox_v1";
+function _loadOutbox(){
+  try{return JSON.parse(localStorage.getItem(OUTBOX_KEY)||"{}");}catch{return{};}
+}
+function _saveOutbox(ob){
+  try{localStorage.setItem(OUTBOX_KEY,JSON.stringify(ob));}catch{}
+  _cloudSyncMark({pendingCount:Object.keys(ob).length});
+}
+function _queueOutbox(k,v){
+  const ob=_loadOutbox();
+  ob[k]={v,ts:Date.now()};
+  _saveOutbox(ob);
+}
+function _dequeueOutbox(k){
+  const ob=_loadOutbox();
+  if(k in ob){delete ob[k];_saveOutbox(ob);}
+}
+let _flushingOutbox=false;
+async function _flushOutbox(){
+  if(_flushingOutbox||!_fbDb)return;
+  const ob=_loadOutbox();
+  const keys=Object.keys(ob);
+  if(keys.length===0)return;
+  _flushingOutbox=true;
+  _cloudSyncMark({status:"syncing"});
+  try{
+    await _fbAuthReady;
+    for(const k of keys){
+      try{
+        await _fsRetry(()=>_fbDb.collection(COL).doc(encodeKey(k)).set({v:ob[k].v,_t:Date.now()}));
+        _dequeueOutbox(k);
+        _lsClear(k);
+      }catch(e){
+        if(!_isTransientNetErr(e)){
+          // Lỗi thật (không phải do mạng) — vẫn giữ trong hàng đợi để không mất
+          // dữ liệu, nhưng dừng lại và báo lỗi để người dùng biết mà kiểm tra.
+          _cloudSyncMark({status:"error",lastError:e.message});
+          _flushingOutbox=false;
+          return;
+        }
+        // Vẫn mất mạng — dừng vòng lặp, đợi lần thử tiếp theo
+        _cloudSyncMark({status:"offline",pendingCount:Object.keys(_loadOutbox()).length});
+        _flushingOutbox=false;
+        return;
+      }
+    }
+    _cloudSyncMark({status:"idle",lastSyncAt:Date.now(),lastError:null,pendingCount:0});
+  }finally{_flushingOutbox=false;}
+}
+if(typeof window!=="undefined"){
+  window.addEventListener("online",()=>_flushOutbox());
+  setInterval(()=>{if(navigator.onLine)_flushOutbox();},20000);
+  // Thử đồng bộ hàng đợi (nếu có từ phiên trước) ngay sau khi app khởi động và
+  // đã có mạng — không cần đợi tới lượt poll định kỳ đầu tiên (tối đa 20 giây).
+  setTimeout(()=>{if(navigator.onLine)_flushOutbox();},3000);
+}
 
 window.storage={
   // ── GET ──
@@ -688,14 +768,26 @@ window.storage={
         const snap=await _fsRetry(()=>_fbDb.collection(COL).doc(encodeKey(k)).get());
         if(snap.exists){const d=snap.data();return{value:d.v};}
         return null; // key không tồn tại trên Firebase → null (KHÔNG đọc localStorage)
-      }catch(e){_cloudSyncMark({status:"error",lastError:e.message});throw e;}
+      }catch(e){
+        // Mất mạng: nếu key này đang có bản ghi tạm chưa kịp đồng bộ trong hàng đợi
+        // ngoại tuyến, trả về bản đó thay vì lỗi — để không "mất" dữ liệu vừa nhập
+        // khi người dùng tải lại trang lúc chưa có mạng.
+        if(_isTransientNetErr(e)){
+          const ob=_loadOutbox();
+          if(k in ob)return{value:ob[k].v};
+        }
+        _cloudSyncMark({status:"error",lastError:e.message});throw e;
+      }
     }
     const v=localStorage.getItem(k);
     return v!=null?{value:v}:null;
   },
 
   // ── SET ──
-  // Firebase kết nối → ghi Firebase + xóa localStorage để tránh stale data
+  // Firebase kết nối + có mạng → ghi Firebase + xóa localStorage để tránh stale data
+  // Firebase kết nối + MẤT MẠNG → KHÔNG chặn thao tác: lưu tạm vào hàng đợi ngoại
+  //   tuyến (localStorage) + ghi ra file backup cục bộ, coi như "đã lưu" đối với
+  //   người dùng, và tự động đẩy lên Firebase khi có mạng trở lại (xem _flushOutbox)
   // Chưa kết nối    → ghi localStorage
   set:async(k,v)=>{
     if(_fbDb){
@@ -703,8 +795,17 @@ window.storage={
       _cloudSyncMark({status:"syncing"});
       try{
         await _fsRetry(()=>_fbDb.collection(COL).doc(encodeKey(k)).set({v,_t:Date.now()}));
+        _dequeueOutbox(k); // nếu trước đó đang chờ trong hàng đợi vì key này thì xoá đi, đã ghi thành công
         _cloudSyncMark({status:"idle",lastSyncAt:Date.now(),lastError:null});
-      }catch(e){_cloudSyncMark({status:"error",lastError:e.message});throw e;}
+      }catch(e){
+        if(_isTransientNetErr(e)){
+          // Mất mạng — không chặn người dùng: lưu tạm + đưa vào hàng đợi, coi như thành công
+          _queueOutbox(k,v);
+          _cloudSyncMark({status:"offline",lastError:e.message});
+          return{key:k,value:v,offline:true};
+        }
+        _cloudSyncMark({status:"error",lastError:e.message});throw e;
+      }
       _lsClear(k); // xóa bản localStorage cũ nếu có
       return{key:k,value:v};
     }
@@ -6533,12 +6634,15 @@ function CloudSyncIndicator({onGoToSettings}){
     return()=>clearInterval(id);
   },[]);
   const configured=!!_fbDb;
-  const s=window.__cloudSync||{status:"idle",lastSyncAt:null,lastError:null};
+  const s=window.__cloudSync||{status:"idle",lastSyncAt:null,lastError:null,pendingCount:0};
   const authPending=configured&&!_fbAuthOk&&(_fbAuth!=null);
 
   let color,bg,border,icon,label;
   if(!configured){
     color="#64748b";bg="#f1f5f9";border="#e2e8f0";icon="☁️";label="Chưa kết nối Cloud";
+  }else if(s.status==="offline"||s.pendingCount>0){
+    color="#c2410c";bg="#fff7ed";border="#fed7aa";icon="📴";
+    label=`Mất mạng – ${s.pendingCount||0} thay đổi chờ đồng bộ`;
   }else if(s.status==="syncing"){
     color="#c2410c";bg="#fff7ed";border="#fed7aa";icon="🔄";label="Đang đồng bộ...";
   }else if(s.status==="error"){
@@ -6562,11 +6666,13 @@ function CloudSyncIndicator({onGoToSettings}){
 
   const tooltip=!configured
     ? "Chưa cấu hình Firebase — dữ liệu chỉ đang lưu trên trình duyệt này.\nBấm để vào Cấu hình hệ thống."
-    : s.status==="error"
-      ? `Lần đồng bộ gần nhất bị lỗi: ${s.lastError||"không rõ nguyên nhân"}\nBấm để kiểm tra lại.`
-      : authPending
-        ? "Đã kết nối Firestore nhưng CHƯA đăng nhập được tài khoản dùng chung.\nBấm để kiểm tra lại."
-        : `Dữ liệu đang được đồng bộ với Firebase.${agoText?"\nLần ghi gần nhất: "+agoText:""}`;
+    : (s.status==="offline"||s.pendingCount>0)
+      ? `Đang mất kết nối mạng. Dữ liệu vẫn được lưu tạm trên máy (và ra file backup nếu đã gắn) —\nsẽ TỰ ĐỘNG đồng bộ lên Cloud ngay khi có mạng trở lại, không cần thao tác gì thêm.`
+      : s.status==="error"
+        ? `Lần đồng bộ gần nhất bị lỗi: ${s.lastError||"không rõ nguyên nhân"}\nBấm để kiểm tra lại.`
+        : authPending
+          ? "Đã kết nối Firestore nhưng CHƯA đăng nhập được tài khoản dùng chung.\nBấm để kiểm tra lại."
+          : `Dữ liệu đang được đồng bộ với Firebase.${agoText?"\nLần ghi gần nhất: "+agoText:""}`;
 
   return(
     <button onClick={onGoToSettings} title={tooltip}
@@ -6574,7 +6680,7 @@ function CloudSyncIndicator({onGoToSettings}){
         background:bg,borderRadius:8,border:`1.5px solid ${border}`,cursor:"pointer",flexShrink:0}}>
       <span style={{fontSize:14}}>{icon}</span>
       <span style={{fontSize:11.5,fontWeight:700,color}}>{label}</span>
-      {configured&&s.status==="idle"&&agoText&&
+      {configured&&s.status==="idle"&&s.pendingCount===0&&agoText&&
         <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>· {agoText}</span>}
     </button>
   );
