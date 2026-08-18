@@ -1069,7 +1069,7 @@ const OPT={
   capNhatPM:["Đã nhập","Chưa nhập"],
   tinhTrangNghien:["Đang điều trị Methadone","Đang cai tự nguyện","Đang cai bắt buộc","Không điều trị","Khác"],
   ngheNghiep:["Công nhân","Nông dân","Buôn bán/Kinh doanh","Học sinh/Sinh viên","Lao động tự do","Thất nghiệp","Cán bộ/Công chức","Nghề khác","Không có nghề nghiệp","Khác"],
-  lyDoLoai:["Chuyển nơi cư trú","Chấp hành xong biện pháp xử lý","Được xác nhận không còn sử dụng ma túy","Chuyển sang diện nghiện","Chuyển sang diện sau cai","Đã mất/Tử vong","Quyết định quản lý hết hiệu lực","Khác"],
+  lyDoLoai:["Bị khởi tố (xử lý hình sự)","Bị xử lý hành chính","Đưa đi cai nghiện bắt buộc, CSGD, TGD","Bỏ đi khỏi nơi cư trú","Tiến bộ (không còn sử dụng ma túy)","Đã mất/Tử vong","Chuyển nơi cư trú","Chấp hành xong biện pháp xử lý","Chuyển sang diện nghiện","Chuyển sang diện sau cai","Quyết định quản lý hết hiệu lực","Khác"],
   nhomTuoi:["Dưới 14 tuổi","Từ đủ 14 đến dưới 16 tuổi","Từ đủ 16 đến dưới 18 tuổi","Từ đủ 18 đến dưới 30 tuổi","Từ đủ 30 tuổi trở lên"],
   trinhDoHV:["Mù chữ","Tiểu học","THCS","THPT","Trung cấp","Cao đẳng","Đại học","Trên Đại học"],
   tinhTrangVL:["Có việc làm","Có việc làm nhưng không ổn định","Không có việc làm"],
@@ -1179,6 +1179,7 @@ const TINHTRANG=[
   {k:"co_mat",lbl:"Có mặt tại địa bàn",type:"bool",grp:"Thông tin cá nhân"},
   {k:"vang_mat",lbl:"Vắng mặt (lý do)",type:"text",grp:"Thông tin cá nhân"},
   {k:"cap_nhat_pm",lbl:"Cập nhật phần mềm QL",type:"select",opts:OPT.capNhatPM,grp:"Thông tin cá nhân"},
+  {k:"ly_do_chua_cap_nhat_pm",lbl:"Lý do chưa cập nhật lên phần mềm QLĐT (Biểu B3, B3-1)",type:"text",grp:"Thông tin cá nhân"},
   {k:"ghi_chu",lbl:"Ghi chú",type:"text",grp:"Thông tin cá nhân"},
 ];
 const DONVI=[
@@ -1553,6 +1554,9 @@ const F_BANG_NHOM=[
   {k:"linh_vuc_bn",lbl:"Lĩnh vực",type:"text",ph:"VD: Ma túy",grp:"Đối sách & Triệt xóa"},
   {k:"can_bo_theo_doi",lbl:"Cán bộ phân công theo dõi",type:"person_multi",detailOpts:OPT.canBoDetail,grp:"Đối sách & Triệt xóa"},
   {k:"chi_huy_theo_doi",lbl:"Chỉ huy phân công theo dõi",type:"select_other",opts:OPT.chiHuyList,grp:"Đối sách & Triệt xóa"},
+  {k:"kq_giai_quyet",lbl:"Kết quả xử lý băng nhóm (cột Số thanh loại – PL2)",type:"select",
+    opts:["Khởi tố","Xử lý hành chính","Tan rã","Khác (chuyển đi nơi khác, không còn đủ tiêu chí)"],grp:"Đối sách & Triệt xóa"},
+  {k:"ngay_giai_quyet",lbl:"Ngày xử lý, giải quyết",type:"date",grp:"Đối sách & Triệt xóa"},
   {k:"tang_giam_ly_do",lbl:"Tăng/Giảm (lý do)",type:"text",grp:"Đối sách & Triệt xóa"},
 ];
 
@@ -1573,6 +1577,9 @@ const F_DIEM_TC=[
   {k:"triet_xoa_ngung_hd",lbl:"Triệt xóa toàn bộ/Ngưng hoạt động",type:"bool",grp:"Đối sách & Xử lý"},
   {k:"can_bo_theo_doi",lbl:"Cán bộ phân công theo dõi",type:"person_multi",detailOpts:OPT.canBoDetail,grp:"Đối sách & Xử lý"},
   {k:"chi_huy_theo_doi",lbl:"Chỉ huy phân công theo dõi",type:"select_other",opts:OPT.chiHuyList,grp:"Đối sách & Xử lý"},
+  {k:"kq_giai_quyet",lbl:"Kết quả xử lý điểm (cột Số thanh loại – PL3)",type:"select",
+    opts:["Khởi tố","Xử lý hành chính","Dừng hoạt động","Khác"],grp:"Đối sách & Xử lý"},
+  {k:"ngay_giai_quyet",lbl:"Ngày xử lý, giải quyết",type:"date",grp:"Đối sách & Xử lý"},
   {k:"tang_giam_ly_do",lbl:"Tăng/Giảm (lý do)",type:"text",grp:"Đối sách & Xử lý"},
 ];
 
@@ -1591,6 +1598,21 @@ const F_HD26=[
   {k:"ql_nv_hn",lbl:"Quản lý NV: Hiềm nghi (HN)",type:"bool",grp:"Thời gian & Biện pháp"},
   {k:"ql_nv_va",lbl:"Quản lý NV: Vụ án (VA)",type:"bool",grp:"Thời gian & Biện pháp"},
   {k:"ghi_chu_hd26",lbl:"Ghi chú (Tăng/Giảm – lý do giảm)",type:"text",grp:"Thời gian & Biện pháp"},
+  // ── Kết quả đấu tranh, giải quyết (biểu BM TỔNG + BM2 của Hướng dẫn 26) ──
+  {k:"kq_giai_quyet",lbl:"Kết quả đấu tranh, giải quyết",type:"select",
+    opts:["Triệt xóa","Vô hiệu hóa","Không còn biểu hiện hoạt động (tự thanh loại)"],grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"ngay_giai_quyet",lbl:"Ngày đấu tranh, giải quyết",type:"date",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"so_vu_lq",lbl:"Số/Mã vụ việc, vụ án liên quan (để đếm đúng số vụ)",type:"text",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"xu_ly_hinh_su",lbl:"Bị xử lý hình sự",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"xu_ly_hanh_chinh",lbl:"Bị xử phạt vi phạm hành chính",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"hanh_vi_xl",lbl:"Hành vi bị xử lý",type:"select",
+    opts:["Tàng trữ trái phép chất ma túy","Mua bán trái phép chất ma túy","Tổ chức sử dụng trái phép chất ma túy","Chứa chấp việc sử dụng trái phép chất ma túy","Sử dụng trái phép chất ma túy","Khác (vận chuyển, chiếm đoạt...)"],
+    grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"duong_tinh_hd26",lbl:"Bị bắt, giữ dương tính với chất ma túy",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"tien_an_hd26",lbl:"Có tiền án",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"tien_su_hd26",lbl:"Có tiền sự",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"dien_giam_cau",lbl:"Thuộc diện quản lý giảm cầu (nghiện, sử dụng, sau cai)",type:"bool",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
+  {k:"nam_sinh_hd26",lbl:"Năm sinh đối tượng (để phân tích nhóm tuổi ở BM2)",type:"date",grp:"Kết quả đấu tranh (BM Tổng/BM2)"},
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -1716,6 +1738,15 @@ const F_UNIFIED=[
   {k:"kt_bp_ngan_chan",lbl:"Khởi tố – Biện pháp ngăn chặn",type:"select",opts:OPT.bpNganChan,nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
   {k:"kt_qd_khoi_to_bc",lbl:"Khởi tố – QĐ khởi tố BC số",type:"text",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
   {k:"cu_tru_30ngay", lbl:"Cư trú >30 ngày trên địa bàn",type:"bool",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"ma_vu_viec_lien_quan",lbl:"Mã vụ việc/vụ án liên quan (để đếm ĐÚNG số vụ ở biểu B4, B5)",type:"text",ph:"VD: VV-2026-001 – các đối tượng cùng 1 vụ ghi cùng mã",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"noi_o_truoc_bi_bat",lbl:"Nơi ở trước khi bị bắt (biểu B4-1, B5-1, B6-1, QĐ28)",type:"textarea",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"ly_do_khong_trong_ds",lbl:"Lý do không có trong danh sách quản lý tại địa phương (biểu B4-1)",type:"text",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"ngay_ban_hanh_kq_xl",lbl:"Ngày ban hành kết quả xử lý (QĐ28)",type:"date",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"ghi_chu_qd28",lbl:"Ghi chú (QĐ28)",type:"text",nhomShow:["vppl"],grp:"⚖️ Thông tin VPPL"},
+  {k:"d256a_dang_cai",lbl:"Điều 256a – Đang trong thời hạn cai nghiện/điều trị nghiện",type:"bool",nhomShow:["vppl"],grp:"⚖️ Điều 256a BLHS (biểu B6)"},
+  {k:"d256a_trong_qlsc",lbl:"Điều 256a – Đang trong thời hạn quản lý sau cai nghiện",type:"bool",nhomShow:["vppl"],grp:"⚖️ Điều 256a BLHS (biểu B6)"},
+  {k:"d256a_2nam_het_qlsc",lbl:"Điều 256a – Trong 02 năm kể từ ngày hết thời hạn quản lý sau cai",type:"bool",nhomShow:["vppl"],grp:"⚖️ Điều 256a BLHS (biểu B6)"},
+  {k:"d256a_2nam_tu_y_bo",lbl:"Điều 256a – Trong 02 năm kể từ khi tự ý chấm dứt cai nghiện tự nguyện",type:"bool",nhomShow:["vppl"],grp:"⚖️ Điều 256a BLHS (biểu B6)"},
   // ── Nhóm Nghi vấn ──
   {k:"noi_dung_nghi_van", lbl:"Nội dung nghi vấn", type:"textarea",
     nhomShow:["nghi_van"],
@@ -1987,8 +2018,49 @@ const COLMAP_HD26={
 };
 const DATE_KEYS_HD26=new Set(["ngay_vao_so","ngay_sinh"]);
 const BOOL_KEYS_HD26=new Set(["co_mat"]);
+// Dò cột tự động theo TIÊU ĐỀ của file mẫu (không phụ thuộc vị trí cột cố định),
+// nhờ đó nhập được cả file mẫu có cột "Khu phố" lẫn file mẫu chính thức không có.
+function _autoMapHD26(aoa,headerIdx){
+  const norm=v=>String(v||"").replace(/\s+/g," ").trim().toLowerCase();
+  const rows=[aoa[headerIdx]||[],aoa[headerIdx+1]||[]];
+  const map={};
+  const set=(k,c)=>{if(map[k]===undefined&&c>=0)map[k]=c;};
+  rows.forEach((row,ri)=>{
+    row.forEach((cell,c)=>{
+      const t=norm(cell);
+      if(!t)return;
+      if(/^stt$/.test(t))return;
+      if(/phường\/xã|phuong\/xa/.test(t))set("phuong_xa",c);
+      else if(/quận\/huyện|^tp$|^thành phố$/.test(t))set("quan_huyen",c);
+      else if(/khu phố/.test(t)&&/cũ/.test(t))set("khu_pho_cu",c);
+      else if(/khu phố/.test(t))set("khu_pho_moi",c);
+      else if(/vào\s*sổ/.test(t))set("ngay_vao_so",c);
+      else if(/họ và tên/.test(t))set("ho_ten",c);
+      else if(/năm sinh/.test(t))set("ngay_sinh",c);
+      else if(/giới tính/.test(t))set("gioi_tinh",c);
+      else if(/hktt|hộ khẩu thường trú|nơi đăng ký/.test(t))set("hktt",c);
+      else if(/nơi ở hiện tại/.test(t))set("noi_o_ht",c);
+      else if(/cccd|định danh/.test(t))set("cccd",c);
+      else if(/trình độ/.test(t))set("trinh_do_hv",c);
+      else if(/xét nghiệm chất ma túy|loại ma túy dương tính/.test(t))set("loai_ma_tuy",c);
+      else if(/quyết định quản lý người sử dụng/.test(t)){set("qd_ql_so",c);set("qd_ql_tg",c+1);}
+      else if(/giáo dục tại xã|quyết định xlhc/.test(t)){set("qd_xlhc_so",c);set("qd_xlhc_tg",c+1);}
+      else if(/xác định tình trạng nghiện/.test(t))set("phieu_xd_nghien",c);
+      else if(/hình thức cai nghiện/.test(t))set("hinh_thuc_cai",c);
+      else if(/giấy chứng nhận chấp hành xong/.test(t)){set("gcn_so",c);set("gcn_co_quan",c+1);set("gcn_hinh_thuc",c+2);set("gcn_thoi_gian",c+3);set("gcn_co_so",c+4);}
+      else if(/quyết định quản lý sau cai/.test(t)){set("qd_sau_cai_so",c);set("qd_sau_cai_cq",c+1);set("qd_sau_cai_th",c+2);}
+      else if(/tình trạng hiện tại/.test(t)){set("co_mat",c);set("vang_mat",c+1);}
+      else if(/cập nhật.*phần mềm|phần mềm quản lý đối tượng/.test(t))set("cap_nhat_pm",c);
+      else if(/^ghi chú/.test(t))set("ghi_chu",c);
+      else if(/^có mặt$/.test(t))set("co_mat",c);
+      else if(/^vắng mặt/.test(t))set("vang_mat",c);
+    });
+  });
+  return map;
+}
 function parseHD26ListFile(wb,nhomId){
-  const map=COLMAP_HD26[nhomId];
+  const mapTinh=COLMAP_HD26[nhomId];
+  let map=mapTinh;
   const ws=wb.Sheets[wb.SheetNames[0]];
   const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
   let headerIdx=-1;
@@ -1996,7 +2068,17 @@ function parseHD26ListFile(wb,nhomId){
     if((aoa[i]||[]).some(c=>String(c||"").toLowerCase().includes("họ và tên"))){headerIdx=i;break;}
   }
   if(headerIdx<0)return{error:"Không tìm thấy hàng tiêu đề 'Họ và Tên' – vui lòng dùng đúng file mẫu chính thức (PL1/PL2/PL3 – Hướng dẫn 26)."};
-  const dataStart=headerIdx+3;
+  // Ưu tiên bản đồ cột dò tự động theo tiêu đề; nếu không nhận đủ trường thì quay về bản đồ cột cố định
+  const mapAuto=_autoMapHD26(aoa,headerIdx);
+  if(mapAuto.ho_ten!==undefined&&Object.keys(mapAuto).length>=6)map=mapAuto;
+  // Hàng dữ liệu đầu tiên: bỏ qua hàng đánh số cột "(1) (2) (3)…" hoặc "-1 -2 -3…" nếu có
+  let dataStart=headerIdx+2;
+  const isNumRow=r=>{
+    const cells=(aoa[r]||[]).map(v=>String(v||"").trim()).filter(Boolean);
+    return cells.length>3&&cells.every(v=>/^\(?-?\d+\)?$/.test(v));
+  };
+  while(isNumRow(dataStart))dataStart++;
+  if(!String((aoa[dataStart]||[])[map.ho_ten]||"").trim()&&String((aoa[dataStart+1]||[])[map.ho_ten]||"").trim())dataStart++;
   const records=[];
   for(let i=dataStart;i<aoa.length;i++){
     const row=aoa[i]||[];
@@ -2078,10 +2160,122 @@ const loadStoreStrict=async(k)=>{
 //   "hoàng" không bị nhiễu bởi các trường không liên quan đến danh
 //   tính đối tượng (vd địa chỉ có chữ "Hoàng Văn Thụ").
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// useDraggableModal — cho phép người dùng KÉO cửa sổ popup sang vị trí
+// khác trên màn hình (giữ chuột/ngón tay vào thanh tiêu đề rồi kéo), để
+// xem được dữ liệu ở phía sau mà không cần đóng popup. Trả về:
+//  - style: gắn vào phần "khung trắng" của modal (áp dụng translate)
+//  - dragHandleProps: gắn vào thanh tiêu đề (khu vực dùng để kéo)
+//  - resetPos(): gọi khi đóng/mở lại modal để về đúng vị trí giữa màn hình
+// Bỏ qua thao tác kéo nếu bấm trúng nút/ô nhập liệu trong thanh tiêu đề
+// (VD nút đóng ✕) để không phá vỡ các nút bấm sẵn có.
+// ══════════════════════════════════════════════════════════════
+function useDraggableModal(){
+  const [pos,setPos]=useState({x:0,y:0});
+  const dragRef=useRef({active:false,startX:0,startY:0,origX:0,origY:0});
+  const onDragMove=useRef();
+  const onDragEnd=useRef();
+  onDragMove.current=(e)=>{
+    if(!dragRef.current.active)return;
+    const isTouch=e.type==="touchmove";
+    const clientX=isTouch?e.touches[0].clientX:e.clientX;
+    const clientY=isTouch?e.touches[0].clientY:e.clientY;
+    setPos({x:dragRef.current.origX+(clientX-dragRef.current.startX),y:dragRef.current.origY+(clientY-dragRef.current.startY)});
+    if(!isTouch)e.preventDefault();
+  };
+  onDragEnd.current=()=>{
+    dragRef.current.active=false;
+    document.removeEventListener("mousemove",onDragMove.current);
+    document.removeEventListener("mouseup",onDragEnd.current);
+    document.removeEventListener("touchmove",onDragMove.current);
+    document.removeEventListener("touchend",onDragEnd.current);
+  };
+  const onDragStart=(e)=>{
+    if(e.target.closest("button,input,select,textarea,a"))return; // không kéo khi bấm nút/ô nhập trong thanh tiêu đề
+    const isTouch=e.type==="touchstart";
+    const clientX=isTouch?e.touches[0].clientX:e.clientX;
+    const clientY=isTouch?e.touches[0].clientY:e.clientY;
+    dragRef.current={active:true,startX:clientX,startY:clientY,origX:pos.x,origY:pos.y};
+    document.addEventListener(isTouch?"touchmove":"mousemove",onDragMove.current,{passive:false});
+    document.addEventListener(isTouch?"touchend":"mouseup",onDragEnd.current);
+  };
+  const resetPos=()=>setPos({x:0,y:0});
+  const style=pos.x||pos.y?{transform:`translate(${pos.x}px,${pos.y}px)`}:undefined;
+  return{
+    style,
+    dragHandleProps:{onMouseDown:onDragStart,onTouchStart:onDragStart,style:{cursor:"grab"}},
+    resetPos,
+  };
+}
+
 function stripDiacriticsVN(str){
   return String(str||"")
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .replace(/đ/g,"d").replace(/Đ/g,"D");
+}
+// ══════════════════════════════════════════════════════════════
+// ĐẾM SỐ ĐỐI TƯỢNG THỰC TẾ (KHÔNG TRÙNG) — gộp 2 bản ghi làm 1 người CHỈ KHI
+// vừa trùng Số CCCD, VỪA trùng Họ tên (khi chưa có CCCD thì so Họ tên + Ngày sinh).
+// LÝ DO CẦN HÀM RIÊNG: 1 đối tượng có thể vừa thuộc nhóm "Sau cai nghiện" vừa
+// thuộc nhóm "Sưu tra" (gắn nhiều nhãn "nhom" trên CÙNG 1 bản ghi) — nếu tính
+// tổng bằng cách CỘNG số lượng từng nhóm lại (sd.length+ng.length+...) thì
+// người này bị đếm 2 LẦN, làm sai lệch số liệu "Tổng đang quản lý".
+// LƯU Ý QUAN TRỌNG: KHÔNG được chỉ dựa vào Số CCCD trùng để gộp — trên thực tế
+// đã phát hiện trường hợp 2 người HOÀN TOÀN KHÁC NHAU (khác họ tên, khác năm
+// sinh) bị trùng Số CCCD do SAI SÓT NHẬP LIỆU (gõ nhầm) ở 1 trong 2 bản ghi.
+// Nếu chỉ so CCCD, hệ thống sẽ gộp nhầm 2 người thành 1, làm "biến mất" 1
+// người thật khỏi thống kê (VD: tổng bị lệch 91 → 90 dù thực tế có 91 người).
+// Do đó bắt buộc phải khớp CẢ Số CCCD LẪN Họ tên mới coi là trùng 1 người —
+// xem thêm findCccdConflicts() để phát hiện và cảnh báo các Số CCCD bị trùng
+// giữa 2 tên khác nhau (nhiều khả năng là lỗi nhập liệu cần cán bộ kiểm tra lại).
+// ══════════════════════════════════════════════════════════════
+function _dedupKeyDoiTuong(r){
+  const name=stripDiacriticsVN(r.ho_ten||"").toLowerCase().trim().replace(/\s+/g," ");
+  const cccd=String(r.cccd||"").replace(/\D/g,"");
+  if(cccd)return"c:"+cccd+"|"+name;
+  const dob=String(r.ngay_sinh||"").trim();
+  return"n:"+name+"|"+dob;
+}
+function countUniqueSubjects(list){
+  const seen=new Set();
+  (list||[]).forEach(r=>{
+    if(!r||(!r.ho_ten&&!r.cccd))return; // bỏ qua bản ghi rỗng/hỏng, không tính vào tổng
+    seen.add(_dedupKeyDoiTuong(r));
+  });
+  return seen.size;
+}
+// Trả về danh sách đối tượng đã loại bỏ trùng lặp (giữ 1 bản ghi/người, theo
+// cùng khoá CCCD+họ tên hoặc họ tên+ngày sinh như countUniqueSubjects) — dùng
+// khi xuất báo cáo/Excel liệt kê từng người 1 lần duy nhất, kể cả khi người đó
+// thuộc nhiều nhóm quản lý (SD, Nghiện, Sau cai, VPPL, Nghi vấn, Sưu tra...).
+function dedupSubjectsForExport(list){
+  const seen=new Set();
+  const out=[];
+  (list||[]).forEach(r=>{
+    if(!r||(!r.ho_ten&&!r.cccd))return;
+    const k=_dedupKeyDoiTuong(r);
+    if(seen.has(k))return;
+    seen.add(k);
+    out.push(r);
+  });
+  return out;
+}
+// Phát hiện các Số CCCD bị dùng chung bởi ≥2 họ tên KHÁC NHAU — gần như chắc
+// chắn là lỗi nhập liệu (gõ nhầm CCCD) cần cán bộ kiểm tra, sửa lại cho đúng.
+function findCccdConflicts(list){
+  const byCccd=new Map();
+  (list||[]).forEach(r=>{
+    const cccd=String(r.cccd||"").replace(/\D/g,"");
+    if(!cccd)return;
+    if(!byCccd.has(cccd))byCccd.set(cccd,[]);
+    byCccd.get(cccd).push(r);
+  });
+  const conflicts=[];
+  byCccd.forEach((recs,cccd)=>{
+    const names=new Set(recs.map(r=>stripDiacriticsVN(r.ho_ten||"").toLowerCase().trim().replace(/\s+/g," ")));
+    if(names.size>1)conflicts.push({cccd,records:recs});
+  });
+  return conflicts;
 }
 function matchesNguoiSearch(r,search){
   const s=String(search||"").trim();
@@ -2459,56 +2653,384 @@ function buildSheetQD28_VPPL(period,records){
   return ws;
 }
 
-// ── TB136 PL1 (tổng) ──
+// ══════════════════════════════════════════════════════════════
+// PL1/PL2/PL3 – "Xuất Excel theo nhóm" (Sử dụng/Nghiện/Sau cai) — khớp
+// CHÍNH XÁC cấu trúc 3 file mẫu chính thức người dùng cung cấp: khối tiêu
+// đề gộp ô nhiều hàng, hàng số cột (-1,-2,-3...), chữ ký + ghi chú cuối
+// trang. Vị trí chữ ký/ghi chú tính động theo số dòng dữ liệu thực tế.
+// ══════════════════════════════════════════════════════════════
+function buildSheetPL1_SuDung(period,records){
+  const NC=20; // A→T
+  const h=["STT","Đơn vị","","Ngày, \ntháng,\n năm vào\n sổ","Họ và Tên","Ngày/\ntháng/\nnăm sinh","Giới tính","Nơi đăng ký HKTT","Nơi ở hiện tại","Số CCCD","Trình độ\nhọc vấn","Phiếu kết quả xét nghiệm chất ma túy trong cơ thể\n(Loại ma túy dương tính)","Quyết định quản lý người sử dụng trái phép ma túy","","Quyết định XLHC áp dụng biện pháp giáo dục tại xã, phường, thị trấn\n(do có hành vi sử dụng trái phép chất ma túy)","","Tình trạng hiện tại","","Tình trạng cập nhật lên phần mềm quản lý đối tượng","Ghi chú"];
+  const sub=[,"Phường/xã","Quận/huyện",,,,,,,,,,"Số - ngày/tháng/năm","Thời hạn quản lý \n","Số-ngày/tháng/năm","Thời hạn quản lý ","Có mặt","Vắng mặt\n(ghi rõ lý do vắng mặt)"];
+  const numRow=Array.from({length:NC},(_,i)=>-(i+1));
+  const aoa=[
+    [`${CONFIG.capTren.toUpperCase()}\n ${CONFIG.donVi.toUpperCase()}`,"","","","","","","","",`CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc`,"","","","","","","","","Phụ lục 1"],
+    [],
+    ["DANH SÁCH \nTHỐNG KÊ NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY"],
+    [`(${period})`],
+    [],
+    h,
+    sub,
+    numRow,
+    ...records.map((r,i)=>[
+      i+1,CONFIG.donVi.replace(/^(Công an )?(phường|xã) /i,""),"",fmtDate(r.ngay_vao_so),
+      r.ho_ten||"",fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
+      r.trinh_do_hv||"",dv(r,"loai_ma_tuy")||"",
+      r.qd_ql_so||"",r.qd_ql_tg||"",r.qd_xlhc_so||"",r.qd_xlhc_tg||"",
+      boolX(r.co_mat),r.vang_mat||"",r.cap_nhat_pm||"",r.ghi_chu||"",
+    ]),
+  ];
+  const dataStartRow=8,dataEndRow=dataStartRow+records.length-1;
+  const blankR=dataEndRow+1,signDateR=blankR+1,signNameR=signDateR+1;
+  aoa.push([]);
+  const signDateRow=Array(NC).fill("");signDateRow[12]=`${CONFIG.donVi.replace(/^(Công an )?(phường|xã) /i,"")}, ngày ${String(new Date().getDate()).padStart(2,"0")} tháng ${String(new Date().getMonth()+1).padStart(2,"0")} năm ${new Date().getFullYear()}`;aoa.push(signDateRow);
+  const signNameRow=Array(NC).fill("");signNameRow[0]="CÁN BỘ LẬP DANH SÁCH\n(Ký, ghi rõ họ tên)";signNameRow[12]="THỦ TRƯỞNG ĐƠN VỊ\n(Ký tên, đóng dấu)";aoa.push(signNameRow);
+  for(let i=0;i<4;i++)aoa.push([]);
+  const noteStartR=signNameR+5;
+  [
+    ["֍Ghi chú:","Mục (4): Ghi rõ thời gian bắt đầu quản lý đối tượng (phải cập nhật vào sổ theo dõi theo biểu mẫu MT4 của Thông tư số 13/2022/TT-BCA của Bộ Công an)."],
+    ["","Mục (12): Ghi rõ loại ma túy dương tính trên que xét nghiệm ma túy hoặc phiếu xét nghiệm chất ma túy trong cơ thể (MDMA, KET, THC, MET, AMP, MOP,...)."],
+    ["","Mục (13) và mục (14): Ghi rõ số, thời gian, cơ quan ban hành Quyết định và thời hạn quản lý (Từ ngày, tháng năm đến ngày, tháng, năm) đối với người sử dụng trái phép chất ma túy."],
+    ["","Mục (15) và mục (16): Ghi rõ số, thời gian, cơ quan ban hành Quyết định và thời hạn quản lý (Từ ngày, tháng, năm đến ngày, tháng, năm)đối với người bị áp dụng biện pháp giáo dục tại xã, phường, thị trấn."],
+    ["","Mục (18): Nếu đối tượng vắng mặt tại địa phương, yêu cầu ghi rõ lý do vắng mặt."],
+    ["","Mục (19): Ghi rõ tình trạng cập nhật lên phần mềm quản lý đối tượng (Đã nhập, chưa nhập,…). "],
+    ["","▶ Đối với trường hợp đối tượng vắng mặt (Đi khỏi nơi cư trú từ 30 ngày trở lên) chưa xác định được nơi đến. Trong vòng 02 ngày làm việc, đơn vị hiện đang quản lý đối tượng phải gửi xác minh, làm rõ nơi đến của đối tượng. Nếu sau 02 ngày làm việc mà chưa xác định được nơi đến của đối tượng, đơn vị phải cập nhật thống tin đối tượng không rõ nơi đến để đánh dấu trên phần mềm Biến động dân cư thuộc hệ thống Cơ sở dữ liệu quốc gia về dân cư và gửi thông báo, yêu cầu phối hợp rà soát đến các đơn vị địa phương khác (Hình thức trực tuyến thông qua chức năng Rà soát đối tượng di chuyển trên phần mềm Quản lý đối tượng của Cục C06). Các đơn vị địa phương khác, khi nhận được thông báo Rà soát đối tượng di chuyển phải xác minh, làm rõ và trả lời cho đơn vị gửi thông báo trong thời hạn 03 ngày làm việc."],
+  ].forEach(row=>{const r2=Array(NC).fill("");r2[0]=row[0];r2[2]=row[1];aoa.push(r2);});
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=Array.from({length:NC},(_,i)=>({wch:i===0?4:i===4||i===7||i===8?26:i===11?22:14}));
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:8}},{s:{r:0,c:9},e:{r:0,c:17}},{s:{r:0,c:18},e:{r:0,c:19}},
+    {s:{r:2,c:0},e:{r:2,c:19}},{s:{r:3,c:0},e:{r:3,c:19}},
+    {s:{r:5,c:0},e:{r:6,c:0}},{s:{r:5,c:1},e:{r:5,c:2}},
+    {s:{r:5,c:3},e:{r:6,c:3}},{s:{r:5,c:4},e:{r:6,c:4}},{s:{r:5,c:5},e:{r:6,c:5}},
+    {s:{r:5,c:6},e:{r:6,c:6}},{s:{r:5,c:7},e:{r:6,c:7}},{s:{r:5,c:8},e:{r:6,c:8}},
+    {s:{r:5,c:9},e:{r:6,c:9}},{s:{r:5,c:10},e:{r:6,c:10}},{s:{r:5,c:11},e:{r:6,c:11}},
+    {s:{r:5,c:12},e:{r:5,c:13}},{s:{r:5,c:14},e:{r:5,c:15}},{s:{r:5,c:16},e:{r:5,c:17}},
+    {s:{r:5,c:18},e:{r:6,c:18}},{s:{r:5,c:19},e:{r:6,c:19}},
+    {s:{r:signDateR,c:12},e:{r:signDateR,c:19}},
+    {s:{r:signNameR,c:0},e:{r:signNameR,c:5}},{s:{r:signNameR,c:12},e:{r:signNameR,c:19}},
+    ...Array.from({length:7},(_,i)=>({s:{r:noteStartR+i,c:2},e:{r:noteStartR+i,c:19}})),
+    {s:{r:noteStartR,c:0},e:{r:noteStartR,c:1}},
+  ];
+  applySheetStyle(ws,[5,6,7],dataStartRow,0,0,2,3);
+  return ws;
+}
+
+function buildSheetPL2_Nghien(period,records){
+  const NC=18; // A→R
+  const h=["STT","Đơn vị","","Ngày, \ntháng,\n năm vào\n sổ","Họ và Tên","Ngày/\ntháng/\nnăm sinh","Giới tính","Nơi đăng ký HKTT","Nơi ở hiện tại","Số CCCD","Trình độ\nhọc vấn","Phiếu kết quả xét nghiệm chất ma túy trong cơ thể\n(Loại ma túy dương tính)","Phiếu kết quả xác định tình trạng nghiện ma túy","Hình thức cai nghiện ma túy đang thực hiện tại địa phương","Tình trạng hiện tại","","Tình trạng cập nhật phần mềm quản lý đối tượng","Ghi chú"];
+  const sub=[,"Phường/xã","Quận/huyện",,,,,,,,,,,,"Có mặt","Vắng mặt\n(Ghi rõ lý do vắng mặt)"];
+  const numRow=Array.from({length:NC},(_,i)=>-(i+1));
+  const aoa=[
+    [`${CONFIG.capTren.toUpperCase()}\n${CONFIG.donVi.toUpperCase()}`,"","","","","","","","",`CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc`,"","","","","","","Phụ lục 2"],
+    [],
+    ["DANH SÁCH \nTHỐNG KÊ NGƯỜI NGHIỆN MA TÚY"],
+    [`(${period})`],
+    [],
+    h,
+    sub,
+    numRow,
+    ...records.map((r,i)=>[
+      i+1,CONFIG.donVi.replace(/^(Công an )?(phường|xã) /i,""),"",fmtDate(r.ngay_vao_so),
+      r.ho_ten||"",fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
+      r.trinh_do_hv||"",dv(r,"loai_ma_tuy")||"",r.phieu_xd_nghien||"",dv(r,"hinh_thuc_cai")||"",
+      boolX(r.co_mat),r.vang_mat||"",r.cap_nhat_pm||"",r.ghi_chu||"",
+    ]),
+  ];
+  const dataStartRow=8,dataEndRow=dataStartRow+records.length-1;
+  const blankR=dataEndRow+1,signDateR=blankR+1,signNameR=signDateR+1;
+  aoa.push([]);
+  const signDateRow=Array(NC).fill("");signDateRow[13]=`${CONFIG.donVi.replace(/^(Công an )?(phường|xã) /i,"")}, ngày ${String(new Date().getDate()).padStart(2,"0")} tháng ${String(new Date().getMonth()+1).padStart(2,"0")} năm ${new Date().getFullYear()}`;aoa.push(signDateRow);
+  const signNameRow=Array(NC).fill("");signNameRow[0]="CÁN BỘ LẬP DANH SÁCH\n(Ký, ghi rõ họ tên)";signNameRow[13]="THỦ TRƯỞNG ĐƠN VỊ\n(Ký tên, đóng dấu)";aoa.push(signNameRow);
+  for(let i=0;i<4;i++)aoa.push([]);
+  const noteStartR=signNameR+5;
+  [
+    ["֍Ghi chú:","Mục (4): Thời gian bắt đầu quản lý đối tượng (phải cập nhật vào sổ theo dõi theo biểu mẫu MT5 của Thông tư số 13/2022/TT-BCA của Bộ Công an)."],
+    ["","Mục (12): Ghi rõ loại ma túy dương tính trên que xét nghiệm ma túy hoặc phiếu xác định tình trạng nghiện ma túy (MDMA, KET, THC, MET, AMP, MOP,…)."],
+    ["","Mục (13):  Ghi rõ số, ngày/tháng/năm và cơ quan ban hành văn bản kết quả xác định tình trạng nghiện ma túy."],
+    ["","Mục (14): Hình thức cai nghiện ma túy đang thực hiện tại địa phương (Điều trị Methadone, Cai nghiện ma túy tự nguyện tại gia đình, cộng đồng,…)."],
+    ["","Mục (16): Nếu đối tượng vắng mặt tại địa phương, yêu cầu ghi rõ lý do vắng mặt."],
+    ["","Mục (19): Ghi rõ tình trạng cập nhật lên phần mềm quản lý đối tượng (Đã nhập, chưa nhập,…)."],
+    ["","▶ Đối với trường hợp đối tượng vắng mặt (Đi khỏi nơi cư trú từ 30 ngày trở lên) chưa xác định được nơi đến. Trong vòng 02 ngày làm việc, đơn vị hiện đang quản lý đối tượng phải gửi xác minh, làm rõ nơi đến của đối tượng. Nếu sau 02 ngày làm việc mà chưa xác định được nơi đến của đối tượng, đơn vị phải cập nhật thống tin đối tượng không rõ nơi đến để đánh dấu trên phần mềm Biến động dân cư thuộc hệ thống Cơ sở dữ liệu quốc gia về dân cư và gửi thông báo, yêu cầu phối hợp rà soát đến các đơn vị địa phương khác (Hình thức trực tuyến thông qua chức năng Rà soát đối tượng di chuyển trên phần mềm Quản lý đối tượng của Cục C06). Các đơn vị địa phương khác, khi nhận được thông báo Rà soát đối tượng di chuyển phải xác minh, làm rõ và trả lời cho đơn vị gửi thông báo trong thời hạn 03 ngày làm việc."],
+  ].forEach(row=>{const r2=Array(NC).fill("");r2[0]=row[0];r2[2]=row[1];aoa.push(r2);});
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=Array.from({length:NC},(_,i)=>({wch:i===0?4:i===4||i===7||i===8?26:14}));
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:8}},{s:{r:0,c:9},e:{r:0,c:15}},{s:{r:0,c:16},e:{r:0,c:17}},
+    {s:{r:2,c:0},e:{r:2,c:17}},{s:{r:3,c:0},e:{r:3,c:17}},
+    {s:{r:5,c:0},e:{r:6,c:0}},{s:{r:5,c:1},e:{r:5,c:2}},
+    {s:{r:5,c:3},e:{r:6,c:3}},{s:{r:5,c:4},e:{r:6,c:4}},{s:{r:5,c:5},e:{r:6,c:5}},
+    {s:{r:5,c:6},e:{r:6,c:6}},{s:{r:5,c:7},e:{r:6,c:7}},{s:{r:5,c:8},e:{r:6,c:8}},
+    {s:{r:5,c:9},e:{r:6,c:9}},{s:{r:5,c:10},e:{r:6,c:10}},{s:{r:5,c:11},e:{r:6,c:11}},
+    {s:{r:5,c:12},e:{r:6,c:12}},{s:{r:5,c:13},e:{r:6,c:13}},
+    {s:{r:5,c:14},e:{r:5,c:15}},
+    {s:{r:5,c:16},e:{r:6,c:16}},{s:{r:5,c:17},e:{r:6,c:17}},
+    {s:{r:signDateR,c:13},e:{r:signDateR,c:17}},
+    {s:{r:signNameR,c:0},e:{r:signNameR,c:5}},{s:{r:signNameR,c:13},e:{r:signNameR,c:17}},
+    ...Array.from({length:7},(_,i)=>({s:{r:noteStartR+i,c:2},e:{r:noteStartR+i,c:17}})),
+    {s:{r:noteStartR,c:0},e:{r:noteStartR,c:1}},
+  ];
+  applySheetStyle(ws,[5,6,7],dataStartRow,0,0,2,3);
+  return ws;
+}
+
+function buildSheetPL3_SauCai(period,records){
+  const NC=23; // A→W
+  const h=["STT","Đơn vị","","Ngày, tháng, năm vào sổ","Họ và Tên","Ngày/\ntháng/\nnăm sinh","Giới tính","Nơi đăng ký HKTT","Nơi ở hiện tại","Số CCCD","Trình độ\nhọc vấn","Giấy chứng nhận chấp hành xong Quyết định đưa vào Cơ sở cai nghiện ma túy bắt buộc","","","","","Quyết định quản lý sau cai nghiện ma túy tại nơi cư trú","","","Tình trạng hiện tại","","Tình trạng cập nhật phần mềm quản lý đối tượng","Ghi chú"];
+  const sub=[,"Phường/xã","Quận/huyện\n",,,,,,,,,"Số - Ngày/tháng/năm","Cơ quan ban hành Giấy chứng nhận","Hình thức cai nghiện ma túy","Thời gian chấp hành","Cơ sở cai nghiện ma túy","Số - Ngày/tháng/năm","Cơ quan ban hành Quyết định","Thời hạn quản lý","Có mặt","Vắng mặt\n(Ghi rõ lý do vắng mặt)"];
+  const numRow=Array.from({length:NC},(_,i)=>-(i+1));
+  const aoa=[
+    [`${CONFIG.capTren.toUpperCase()}\n${CONFIG.donVi.toUpperCase()}`,"","","","","","","","",`CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc`,"","","","","","","","","","","","Phụ lục 3"],
+    [],
+    ["DANH SÁCH \nTHỐNG KÊ NGƯỜI BỊ QUẢN LÝ SAU CAI NGHIỆN MA TÚY"],
+    [`(${period})`],
+    [],
+    h,
+    sub,
+    numRow,
+    ...records.map((r,i)=>[
+      i+1,CONFIG.donVi.replace(/^(Công an )?(phường|xã) /i,""),"",fmtDate(r.ngay_vao_so),
+      r.ho_ten||"",fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
+      r.trinh_do_hv||"",r.gcn_so||"",r.gcn_co_quan||"",r.gcn_hinh_thuc||"",r.gcn_thoi_gian||"",r.gcn_co_so||"",
+      r.qd_sau_cai_so||"",r.qd_sau_cai_cq||"",r.qd_sau_cai_th||"",
+      boolX(r.co_mat),r.vang_mat||"",r.cap_nhat_pm||"",r.ghi_chu||"",
+    ]),
+  ];
+  const dataStartRow=8,dataEndRow=dataStartRow+records.length-1;
+  const blankR=dataEndRow+1,signNameR=blankR+1;
+  aoa.push([]);
+  const signNameRow=Array(NC).fill("");
+  signNameRow[1]="CÁN BỘ LẬP DANH SÁCH\n(Ký, ghi rõ họ tên)";
+  signNameRow[14]="THỦ TRƯỞNG ĐƠN VỊ\n(Ký tên, đóng dấu)";
+  aoa.push(signNameRow);
+  for(let i=0;i<4;i++)aoa.push([]);
+  const noteStartR=signNameR+5;
+  [
+    ["֍ Ghi chú:","Mục (4): Thời gian bắt đầu quản lý đối tượng (phải cập nhật vào sổ theo dõi theo biểu mẫu MT5 của Thông tư số 13/2022/TT-BCA của Bộ Công an)."],
+    ["","Mục (12), mục (13), mục (14), mục (15) và mục (16): Ghi rõ số, thời gian, cơ quan ban hành Giấy chứng nhận, hình thức cai nghiện ma túy, thời gian chấp hành và cơ sở cai nghiện ma túy áp dụng trước khi hoàn thành cai nghiện ma túy (Cai nghiện bắt buộc, cai nghiện tự nguyện, điều trị methadone,…)."],
+    ["","Mục (17), mục (18) và mục (19): Ghi rõ số, thời gian, cơ quan ban hành Quyết định và thời hạn quản lý (Từ ngày, tháng, năm đến ngày, tháng, năm) đối với người bị quản lý sau cai nghiện ma túy."],
+    ["","Mục (21): Nếu đối tượng vắng mặt tại địa phương, yêu cầu ghi rõ lý do vắng mặt."],
+    ["","Mục (22): Ghi rõ tình trạng cập nhật lên phần mềm quản lý đối tượng (Đã nhập, chưa nhập,…)."],
+    ["","▶ Đối với trường hợp đối tượng vắng mặt (Đi khỏi nơi cư trú từ 30 ngày trở lên) chưa xác định được nơi đến. Trong vòng 02 ngày làm việc, đơn vị hiện đang quản lý đối tượng phải gửi xác minh, làm rõ nơi đến của đối tượng. Nếu sau 02 ngày làm việc mà chưa xác định được nơi đến của đối tượng, đơn vị phải cập nhật thống tin đối tượng không rõ nơi đến để đánh dấu trên phần mềm Biến động dân cư thuộc hệ thống Cơ sở dữ liệu quốc gia về dân cư và gửi thông báo, yêu cầu phối hợp rà soát đến các đơn vị địa phương khác (Hình thức trực tuyến thông qua chức năng Rà soát đối tượng di chuyển trên phần mềm Quản lý đối tượng của Cục C06). Các đơn vị địa phương khác, khi nhận được thông báo Rà soát đối tượng di chuyển phải xác minh, làm rõ và trả lời cho đơn vị gửi thông báo trong thời hạn 03 ngày làm việc."],
+  ].forEach(row=>{const r2=Array(NC).fill("");r2[0]=row[0];r2[2]=row[1];aoa.push(r2);});
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"]=Array.from({length:NC},(_,i)=>({wch:i===0?4:i===4||i===7||i===8?26:14}));
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:8}},{s:{r:0,c:9},e:{r:0,c:20}},{s:{r:0,c:21},e:{r:0,c:22}},
+    {s:{r:2,c:0},e:{r:2,c:22}},{s:{r:3,c:0},e:{r:3,c:22}},
+    {s:{r:5,c:0},e:{r:6,c:0}},{s:{r:5,c:1},e:{r:5,c:2}},
+    {s:{r:5,c:3},e:{r:6,c:3}},{s:{r:5,c:4},e:{r:6,c:4}},{s:{r:5,c:5},e:{r:6,c:5}},
+    {s:{r:5,c:6},e:{r:6,c:6}},{s:{r:5,c:7},e:{r:6,c:7}},{s:{r:5,c:8},e:{r:6,c:8}},
+    {s:{r:5,c:9},e:{r:6,c:9}},{s:{r:5,c:10},e:{r:6,c:10}},
+    {s:{r:5,c:11},e:{r:5,c:15}},{s:{r:5,c:16},e:{r:5,c:18}},{s:{r:5,c:19},e:{r:5,c:20}},
+    {s:{r:5,c:21},e:{r:6,c:21}},{s:{r:5,c:22},e:{r:6,c:22}},
+    {s:{r:signNameR,c:1},e:{r:signNameR,c:3}},{s:{r:signNameR,c:14},e:{r:signNameR,c:16}},
+    ...Array.from({length:5},(_,i)=>({s:{r:noteStartR+i,c:2},e:{r:noteStartR+i,c:22}})),
+    {s:{r:noteStartR,c:0},e:{r:noteStartR,c:1}},
+  ];
+  applySheetStyle(ws,[5,6,7],dataStartRow,0,0,2,3);
+  return ws;
+}
+
+// ── TB136 PL1 (tổng) — khớp chính xác cấu trúc file mẫu chính thức ──
 function buildSheetTB136_PL1(period,rpt){
   const t=rpt.tb136||{};
+  const hienQL=(t.so_dau_ky||0)+(t.ps_moi||0)-(t.tl_tong||0);
   const aoa=[
-    [CONFIG.capTren],[CONFIG.donVi],[],
-    ["PHỤ LỤC 1 – Thống kê kết quả rà soát, đấu tranh, xử lý đối tượng trong diện quản lý (tổng)"],[period],[],
-    ["STT","Lĩnh vực","Số đầu kỳ","Số PS mới","Thanh loại – Tổng","TL – Khởi tố","TL – XLHC","TL – Cai BB/CSGD/TGD","TL – Bỏ đi","TL – Tiến bộ/Chết","TL – Khác","Hiện đang QL","ĐB – Trong xã","ĐB – Liên xã","ĐB – Liên tỉnh","BP – Theo PL","BP – Sưu tra","BP – HN/CA","BP – Khác"],
-    [1,"Ma túy",t.so_dau_ky||0,t.ps_moi||0,t.tl_tong||0,t.tl_khoi_to||0,t.tl_xlhc||0,t.tl_cai_bb||0,t.tl_bo_di||0,t.tl_tien_bo||0,t.tl_khac||0,(t.so_dau_ky||0)+(t.ps_moi||0)-(t.tl_tong||0),t.db_trong_xa||0,t.db_lien_xa||0,t.db_lien_tinh||0,t.bp_theo_pl||0,t.bp_suu_tra||0,t.bp_hiem_nghi_ca||0,t.bp_khac||0]
+    [CONFIG.capTren.toUpperCase(),"","","","","","","CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","","","TB136"],
+    [CONFIG.donVi.toUpperCase(),"","","","","","","Độc lập - Tự do - Hạnh phúc"],
+    [],
+    ["PHỤ LỤC 1"],
+    ["Thống kê kết quả rà soát, đấu tranh, xử lý đối tượng trong diện quản lý (tổng)"],
+    [period],
+    [],
+    // R7 (0-idx): nhóm cột lớn
+    ["STT","Lĩnh vực","KẾT QUẢ CÔNG TÁC RÀ SOÁT","","","","","","","","","","PHÂN TÍCH SỐ ĐỐI TƯỢNG HIỆN ĐANG QUẢN LÝ"],
+    // R8
+    ["","","Số đầu kỳ","Số phát sinh mới","Số thanh loại","","","","","","","Số hiện đang quản lý","Địa bàn hoạt động","","","Biện pháp quản lý"],
+    // R9
+    ["","","","","Tổng","Khởi tố","Xử lý hành chính","Đưa đi cai nghiện bắt buộc, CSGD, TGD","Bỏ đi khỏi nơi cư trú","Tiến bộ hoặc chết","Khác","","Trong xã","Liên xã","Liên tỉnh","Quản lý theo pháp luật","Đưa vào sưu tra","Đưa vào hiềm nghi, chuyên án","Khác"],
+    // R10 – dữ liệu
+    [1,"Ma túy",t.so_dau_ky||0,t.ps_moi||0,t.tl_tong||0,t.tl_khoi_to||0,t.tl_xlhc||0,t.tl_cai_bb||0,t.tl_bo_di||0,t.tl_tien_bo||0,t.tl_khac||0,hienQL,t.db_trong_xa||0,t.db_lien_xa||0,t.db_lien_tinh||0,t.bp_theo_pl||0,t.bp_suu_tra||0,t.bp_hiem_nghi_ca||0,t.bp_khac||0],
+    [],
   ];
+  const signDateRow=Array(19).fill("");signDateRow[11]="…......................, ngày ….…... tháng …..…. năm 2026";aoa.push(signDateRow);
+  const signNamesRow=Array(19).fill("");signNamesRow[2]="TRƯỞNG CÔNG AN PHƯỜNG";signNamesRow[11]="CÁN BỘ THỐNG KÊ";aoa.push(signNamesRow);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=Array(19).fill({wch:16});
-  addStdMerges(ws,19,6);
-  applySheetStyle(ws,[6],7,0,1,3,4);
+  ws["!cols"]=Array(19).fill({wch:14});
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:4}},{s:{r:0,c:7},e:{r:0,c:17}},
+    {s:{r:1,c:0},e:{r:1,c:4}},{s:{r:1,c:7},e:{r:1,c:17}},
+    {s:{r:3,c:0},e:{r:3,c:17}},{s:{r:4,c:0},e:{r:4,c:17}},{s:{r:5,c:0},e:{r:5,c:17}},
+    {s:{r:7,c:0},e:{r:9,c:0}},{s:{r:7,c:1},e:{r:9,c:1}},
+    {s:{r:7,c:2},e:{r:7,c:11}},{s:{r:7,c:12},e:{r:7,c:18}},
+    {s:{r:8,c:2},e:{r:9,c:2}},{s:{r:8,c:3},e:{r:9,c:3}},
+    {s:{r:8,c:4},e:{r:8,c:10}},{s:{r:8,c:11},e:{r:9,c:11}},
+    {s:{r:8,c:12},e:{r:8,c:14}},{s:{r:8,c:15},e:{r:8,c:18}},
+    {s:{r:12,c:11},e:{r:12,c:17}},
+    {s:{r:13,c:2},e:{r:13,c:6}},{s:{r:13,c:11},e:{r:13,c:16}},
+  ];
+  applySheetStyle(ws,[7,8,9],10,0,1,3,5);
   return ws;
 }
 
-// ── TB136 PL2 (Băng nhóm tổng) ──
+// ── TB136 PL2 (Băng nhóm tổng) — khớp chính xác cấu trúc file mẫu chính thức ──
 function buildSheetTB136_PL2(period,rpt){
   const t=rpt.pl2_tb136||{};
+  const hienQL=(t.bn_hien_ql!==undefined&&t.bn_hien_ql!=="")?t.bn_hien_ql:((t.bn_dau_ky||0)+(t.bn_ps_moi||0)-(t.bn_tl_tong||0));
   const aoa=[
-    [CONFIG.capTren],[CONFIG.donVi],[],
-    ["PHỤ LỤC 2 – Thống kê kết quả rà soát, đấu tranh, xử lý băng nhóm nghi vấn hoạt động phạm tội (tổng)"],[period],[],
-    ["STT","Lĩnh vực","Số đầu kỳ","Số PS mới","TL – Tổng","TL – KT","TL – XLHC","TL – Tan rã","TL – Khác","Hiện QL","ĐB trong xã","ĐB liên xã","ĐB liên tỉnh","DS – Xác lập CA","DS – Xác lập HN","DS – Lập KH","DS – Khác"],
-    [1,"Ma túy",t.bn_dau_ky||0,t.bn_ps_moi||0,t.bn_tl_tong||0,t.bn_tl_khoi_to||0,t.bn_tl_xlhc||0,t.bn_tl_tan_ra||0,t.bn_tl_khac||0,(t.bn_dau_ky||0)+(t.bn_ps_moi||0)-(t.bn_tl_tong||0),t.bn_db_trong_xa||0,t.bn_db_lien_xa||0,t.bn_db_lien_tinh||0,t.bn_ds_xlap_ca||0,t.bn_ds_xac_lap_hn||0,t.bn_ds_lap_kh||0,t.bn_ds_khac||0]
+    [CONFIG.capTren.toUpperCase(),"","","","","","","CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","TB136"],
+    [CONFIG.donVi.toUpperCase(),"","","","","","","Độc lập - Tự do - Hạnh phúc"],
+    [],
+    ["PHỤ LỤC 2"],
+    ["Thống kê kết quả rà soát, đấu tranh, xử lý băng nhóm nghi vấn hoạt động phạm tội (tổng)"],
+    [period],
+    [],
+    ["STT","Lĩnh vực","KẾT QUẢ CÔNG TÁC RÀ SOÁT","","","","","","","","PHÂN TÍCH SỐ BĂNG NHÓM HIỆN ĐANG QUẢN LÝ"],
+    ["","","Số đầu kỳ","Số phát sinh mới","Số thanh loại","","","","","Số hiện đang quản lý","Địa bàn hoạt động","","","Đối sách đang áp dụng"],
+    ["","","","","Tổng","Khởi tố","Xử lý hành chính","Tan rã","Khác","","Trong cấp xã","Liên cấp xã","Liên tỉnh","Xác lập chuyên án","Xác lập hiềm nghi","Lập kế hoạch đấu tranh","Khác"],
+    [1,"Ma túy",t.bn_dau_ky||0,t.bn_ps_moi||0,t.bn_tl_tong||0,t.bn_tl_khoi_to||0,t.bn_tl_xlhc||0,t.bn_tl_tan_ra||0,t.bn_tl_khac||0,hienQL,t.bn_db_trong_xa||0,t.bn_db_lien_xa||0,t.bn_db_lien_tinh||0,t.bn_ds_xlap_ca||0,t.bn_ds_xac_lap_hn||0,t.bn_ds_lap_kh||0,t.bn_ds_khac||0],
+    [],
   ];
+  const signDateRow=Array(17).fill("");signDateRow[9]="…......................, ngày …….... tháng …….... năm 2026";aoa.push(signDateRow);
+  const signNamesRow=Array(17).fill("");signNamesRow[1]="TRƯỞNG CÔNG AN PHƯỜNG";signNamesRow[9]="CÁN BỘ THỐNG KÊ";aoa.push(signNamesRow);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=Array(17).fill({wch:16});
-  addStdMerges(ws,17,6);
-  applySheetStyle(ws,[6],7,0,1,3,4);
+  ws["!cols"]=Array(17).fill({wch:14});
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:4}},{s:{r:0,c:7},e:{r:0,c:15}},
+    {s:{r:1,c:0},e:{r:1,c:4}},{s:{r:1,c:7},e:{r:1,c:15}},
+    {s:{r:3,c:0},e:{r:3,c:16}},{s:{r:4,c:0},e:{r:4,c:16}},{s:{r:5,c:0},e:{r:5,c:16}},
+    {s:{r:7,c:0},e:{r:9,c:0}},{s:{r:7,c:1},e:{r:9,c:1}},
+    {s:{r:7,c:2},e:{r:7,c:9}},{s:{r:7,c:10},e:{r:7,c:16}},
+    {s:{r:8,c:2},e:{r:9,c:2}},{s:{r:8,c:3},e:{r:9,c:3}},
+    {s:{r:8,c:4},e:{r:8,c:8}},{s:{r:8,c:9},e:{r:9,c:9}},
+    {s:{r:8,c:10},e:{r:8,c:12}},{s:{r:8,c:13},e:{r:8,c:16}},
+    {s:{r:12,c:9},e:{r:12,c:15}},
+    {s:{r:13,c:1},e:{r:13,c:6}},{s:{r:13,c:9},e:{r:13,c:14}},
+  ];
+  applySheetStyle(ws,[7,8,9],10,0,1,3,5);
   return ws;
 }
 
-// ── TB136 PL3 (Điểm TC tổng) ──
+// ── TB136 PL3 (Điểm TC tổng) — khớp chính xác cấu trúc file mẫu chính thức ──
 function buildSheetTB136_PL3(period,rpt){
   const t=rpt.pl3_tb136||{};
   const aoa=[
-    [CONFIG.capTren],[CONFIG.donVi],[],
-    ["PHỤ LỤC 3 – Thống kê kết quả rà soát, đấu tranh triệt xóa, chuyển hóa điểm tổ chức, chứa chấp SDTPCMT"],[period],[],
-    ["STT","Lĩnh vực","Số đầu kỳ","PS mới","TL – Tổng","TL – KT","TL – XLHC","TL – Dừng HĐ","TL – Khác","ĐT Tổ chức SD (thanh toán)","ĐT Chứa chấp (thanh toán)","ĐT Tổ chức SD (đang QL)","ĐT Chứa chấp (đang QL)","LP – KH đấu tranh","LP – Kiểm tra XL","LP – Tiếp tục TD","LP – Khác"],
-    [1,"Ma túy",t.diem_dau_ky||0,t.diem_ps_moi||0,t.diem_tl_tong||0,t.diem_tl_khoi_to||0,t.diem_tl_xlhc||0,t.diem_tl_dung||0,t.diem_tl_khac||0,0,0,t.diem_ql_to_chuc||0,t.diem_ql_chua_chap||0,0,0,0,0]
+    [CONFIG.capTren.toUpperCase(),"","","","","","","CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","TB136"],
+    [CONFIG.donVi.toUpperCase(),"","","","","","","Độc lập - Tự do - Hạnh phúc"],
+    [],
+    ["PHỤ LỤC 3"],
+    ["Thống kê kết quả rà soát, đấu tranh triệt xóa, chuyển hóa các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy (tổng)"],
+    [period],
+    [],
+    ["STT","Lĩnh vực","KẾT QUẢ CÔNG TÁC RÀ SOÁT","","","","","","","","","PHÂN TÍCH SỐ ĐIỂM TỔ CHỨC, CHỨA CHẤP SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY HIỆN ĐANG QUẢN LÝ"],
+    ["","","Số đầu kỳ","Số phát sinh mới","Số thanh loại","","","","","Số hiện đang quản lý","","Loại hình","","Đối sách đang áp dụng"],
+    ["","","","","Tổng","Khởi tố","Xử lý hành chính","Dừng hoạt động","Khác","Điểm tổ chức sử dụng trái phép chất ma túy","Điểm chứa chấp sử dụng trái phép chất ma túy","Điểm tổ chức sử dụng trái phép chất ma túy","Điểm chứa chấp sử dụng trái phép chất ma túy","Lập kế hoạch đấu tranh","Kiểm tra xử lý","Tiếp tục theo dõi, xác minh","Khác"],
+    [1,"Ma túy",t.diem_dau_ky||0,t.diem_ps_moi||0,t.diem_tl_tong||0,t.diem_tl_khoi_to||0,t.diem_tl_xlhc||0,t.diem_tl_dung||0,t.diem_tl_khac||0,
+      t.diem_hien_tc||t.diem_ql_to_chuc||0,t.diem_hien_cc||t.diem_ql_chua_chap||0,
+      t.diem_ql_to_chuc||0,t.diem_ql_chua_chap||0,
+      t.diem_ds_kh||0,t.diem_ds_ktxl||0,t.diem_ds_theo_doi||0,t.diem_ds_khac||0],
+    [],
   ];
+  const signDateRow=Array(17).fill("");signDateRow[10]="…..................., ngày ……... tháng …...... năm 2026";aoa.push(signDateRow);
+  const signNamesRow=Array(17).fill("");signNamesRow[2]="TRƯỞNG CÔNG AN PHƯỜNG";signNamesRow[10]="CÁN BỘ THỐNG KÊ";aoa.push(signNamesRow);
+  aoa.push([]);
+  const noteRow=Array(17).fill("");aoa.push(noteRow);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=Array(17).fill({wch:16});
-  addStdMerges(ws,17,6);
-  applySheetStyle(ws,[6],7,0,1,3,4);
+  ws["!cols"]=Array(17).fill({wch:14});
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:4}},{s:{r:0,c:7},e:{r:0,c:15}},
+    {s:{r:1,c:0},e:{r:1,c:4}},{s:{r:1,c:7},e:{r:1,c:15}},
+    {s:{r:3,c:0},e:{r:3,c:16}},{s:{r:4,c:0},e:{r:4,c:16}},{s:{r:5,c:0},e:{r:5,c:16}},
+    {s:{r:7,c:0},e:{r:9,c:0}},{s:{r:7,c:1},e:{r:9,c:1}},
+    {s:{r:7,c:2},e:{r:7,c:10}},{s:{r:7,c:11},e:{r:7,c:16}},
+    {s:{r:8,c:2},e:{r:9,c:2}},{s:{r:8,c:3},e:{r:9,c:3}},
+    {s:{r:8,c:4},e:{r:8,c:8}},{s:{r:8,c:9},e:{r:8,c:10}},
+    {s:{r:8,c:11},e:{r:8,c:12}},{s:{r:8,c:13},e:{r:8,c:16}},
+    {s:{r:12,c:10},e:{r:12,c:15}},
+    {s:{r:13,c:2},e:{r:13,c:7}},{s:{r:13,c:10},e:{r:13,c:14}},
+    {s:{r:14,c:2},e:{r:14,c:5}},
+  ];
+  applySheetStyle(ws,[7,8,9],10,0,1,3,5);
   return ws;
 }
 
 // ── TB136 PL1B (DS đối tượng chi tiết) ──
-function buildSheetTB136_PL1B(period,allSD,allNG,allSC){
+// ══════════════════════════════════════════════════════════════
+// XUẤT EXCEL "DANH SÁCH ĐỐI TƯỢNG QUẢN LÝ" (Tất cả đối tượng)
+// 19 cột theo đúng yêu cầu: 5 cột định danh + 14 cột nghiệp vụ (PL1B cột 7-20),
+// áp dụng cho TOÀN BỘ đối tượng đang quản lý (mọi nhóm), không riêng SD/Nghiện/Sau cai.
+// ══════════════════════════════════════════════════════════════
+function exportDoiTuongQuanLyExcel(list,toast){
+  if(!window.XLSX){toast("Chưa tải được thư viện xuất Excel. Kiểm tra kết nối mạng.","error");return;}
+  if(!list||!list.length){toast("Không có đối tượng nào để xuất","error");return;}
+  try{
+    const linhVucMap={
+      "1":"ĐTCB về lĩnh vực phòng, chống sản xuất trái phép chất ma túy",
+      "2":"ĐTCB về lĩnh vực phòng, chống mua bán, vận chuyển trái phép chất ma túy",
+      "3":"ĐTCB về lĩnh vực phòng, chống tổ chức, chứa chấp về sử dụng trái phép chất ma túy",
+      "4":"ĐTCB về lĩnh vực kiểm soát các hoạt động hợp pháp liên quan đến ma túy",
+      "5":"ĐTCB về lĩnh vực quản lý người nghiện, người sử dụng trái phép chất ma túy",
+    };
+    const getLinhVuc=v=>{
+      if(!v)return"";
+      const num=String(v).trim().match(/^(\d)/);
+      return(num&&linhVucMap[num[1]])||v;
+    };
+    const headers=[
+      "STT","Họ và tên","Ngày sinh","HKTT/ Nơi ở","Số CCCD",
+      "Tiền án- tiền sự","Hành vi","Dấu hiệu nghi vấn","Địa bàn nghi vấn hoạt động",
+      "Diện quản lý","Đối sách xử lý","Đơn vị quản lý","Số lượt gọi hỏi răn đe",
+      "Thời điểm vắng mặt","Lĩnh vực","Thời điểm đưa vào",
+      "Cán bộ được phân công theo dõi","Chỉ huy được phân công theo dõi","Tăng/ giảm (lý do)",
+    ];
+    const rows=list.map((r,i)=>{
+      const tienAnDetail=r.tien_an_ct||[r.tien_an?"Tiền án":"",r.tien_su?"Tiền sự":""].filter(Boolean).join(", ")||"";
+      const soLuot=r.so_luot_goi_hoi||(r.ngay_goi_hoi?String(r.ngay_goi_hoi.split(",").filter(d=>d.trim()).length):"");
+      const donViQl=r.don_vi_ql_nv||CONFIG.donVi;
+      const hkttLine=(r.hktt||"").trim();
+      const noiOLine=(r.noi_o_ht||"").trim();
+      const hkttFull=hkttLine&&noiOLine&&hkttLine!==noiOLine?hkttLine+"\n"+noiOLine:(hkttLine||noiOLine);
+      return[
+        i+1,
+        r.ho_ten||"",
+        fmtDate(r.ngay_sinh),
+        hkttFull,
+        r.cccd||"",
+        tienAnDetail,
+        r.hanh_vi_nv||"",
+        r.dau_hieu_nghi_van||"",
+        r.dia_ban_nghi_van||"",
+        r.dien_ql_so_hs||"",
+        dv(r,"doi_sach_xl")||"",
+        donViQl,
+        soLuot||"",
+        r.thoi_diem_vang_mat||"",
+        getLinhVuc(r.linh_vuc_nv),
+        fmtDate(r.thoi_diem_dua_vao_ql),
+        r.can_bo_theo_doi||"",
+        r.chi_huy_theo_doi||"",
+        r.tang_giam_ly_do||"",
+      ];
+    });
+    const period=`Tính đến ngày ${fmtDate(new Date().toISOString())}`;
+    const ws=buildSheet("DANH SÁCH ĐỐI TƯỢNG QUẢN LÝ",period,headers,rows);
+    ws["!cols"]=[
+      {wch:5},{wch:22},{wch:12},{wch:30},{wch:14},
+      {wch:26},{wch:22},{wch:22},{wch:22},
+      {wch:20},{wch:20},{wch:20},{wch:12},
+      {wch:26},{wch:34},{wch:14},
+      {wch:24},{wch:22},{wch:22},
+    ];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"DanhSachDoiTuong");
+    XLSX.writeFile(wb,`DanhSachDoiTuongQuanLy_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast(`✅ Đã xuất Excel ${list.length} đối tượng!`,"success");
+  }catch(e){toast("❌ Lỗi xuất Excel: "+e.message,"error");}
+}
+
+function buildSheetTB136_PL1B(period,allSubjects){
   // ── Lĩnh vực: map số → text đầy đủ ──────────────────────────
   const linhVucMap={
     "1":"ĐTCB về lĩnh vực phòng, chống sản xuất trái phép chất ma túy",
@@ -2559,11 +3081,7 @@ function buildSheetTB136_PL1B(period,allSD,allNG,allSC){
     ];
   };
 
-  const all=[
-    ...allSD.map((r,i)=>mkRow(r,i)),
-    ...allNG.map((r,i)=>mkRow(r,allSD.length+i)),
-    ...allSC.map((r,i)=>mkRow(r,allSD.length+allNG.length+i)),
-  ];
+  const all=allSubjects.map((r,i)=>mkRow(r,i));
 
   // ── Xây dựng AOA đúng cấu trúc template TB136 PL1B ──────────
   // Row 1: Tiêu đề đơn vị cấp trên + CỘNG HÒA + TB136
@@ -2581,19 +3099,19 @@ function buildSheetTB136_PL1B(period,allSD,allNG,allSC){
 
   const aoa=[
     // Row 1
-    [CONFIG.capTren,"","","","","","",
-     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","","","","TB136"],
+    [CONFIG.capTren.toUpperCase(),"","","","","","",
+     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","","","TB136"],
     // Row 2
-    [CONFIG.donVi,"","","","","","",
+    [CONFIG.donVi.toUpperCase(),"","","","","","",
      "Độc lập - Tự do - Hạnh phúc"],
     // Row 3 (trống)
     [],
     // Row 4
     ["PHỤ LỤC 1B"],
     // Row 5
-    ["Thống kê kết quả rà soát, đấu tranh, xử lý đối tượng trong diện quản lý về ma túy (cụ thể)"],
-    // Row 6 – kỳ báo cáo ở cột F
-    ["","","","","","",period],
+    ["Thống kê kết quả rà soát, đấu tranh, xử lý đối tượng trong diện quản lý liên quan đến ma túy (cụ thể)"],
+    // Row 6 – kỳ báo cáo ở cột F (đúng vị trí merge F6:M6 bên dưới)
+    ["","","","","",period],
     // Row 7 (trống)
     [],
     // Row 8 – tên cột chính (C8 gộp C8:D8 = "Năm sinh")
@@ -2612,7 +3130,11 @@ function buildSheetTB136_PL1B(period,allSD,allNG,allSC){
   ];
 
   // ── Footer: dòng ngày ký + chức danh ────────────────────────
-    // Dòng ngày ký (cột O = index 14)
+  // Vị trí phụ thuộc số dòng dữ liệu: 1 dòng trống đệm, rồi ngày ký, rồi chữ ký
+  aoa.push([]); // dòng trống đệm giữa dữ liệu và chữ ký (đúng như file mẫu)
+  const footerDateR=10+all.length+1;   // hàng "ngày ký" (0-based)
+  const footerNameR=footerDateR+1;      // hàng "TRƯỞNG CA / CÁN BỘ THỐNG KÊ" (0-based)
+  // Dòng ngày ký (cột O = index 14)
   const signDateRow=Array(20).fill("");
   signDateRow[14]="…......................, ngày ……... tháng …... năm 2026";
   aoa.push(signDateRow);
@@ -2666,51 +3188,54 @@ function buildSheetTB136_PL1B(period,allSD,allNG,allSC){
     {wch:22},  // S: Chỉ huy
     {wch:20},  // T: Tăng/Giảm
   ];
-  // ── Merge cells theo đúng template TB136 PL1B ────────────────
-  // R7=header chính (idx 0-based), R8=sub-header, R9=số thứ tự
-  // Các cột không có sub-header → merge R7:R9 (span 3 hàng)
-  // Cột C "Năm sinh" → merge C7:D7 (span 2 cột), C8="Nam" D8="Nữ"
-  // Hàng R0: capTren A0:F0, CỘNG HÒA G0:S0
-  // Hàng R1: donVi A1:F1, Độc lập G1:L1
-  // Hàng R3: PHỤ LỤC 1B → A3:T3
-  // Hàng R4: tiêu đề dài → A4:T4
-  const E=({r,c})=>({r,c}); // shorthand
+  // ── Merge cells theo đúng template TB136 PL1B (đã đối chiếu chính xác
+  //    với file mẫu thật: header cột chỉ gộp 2 hàng R7:R8, KHÔNG gộp
+  //    sang R9 (hàng số thứ tự (1)(2)(3)... đứng riêng, không gộp) ────
+  // Hàng R0: capTren A0:E0, CỘNG HÒA H0:R0
+  // Hàng R1: donVi A1:E1, Độc lập H1:R1
+  // Hàng R3: PHỤ LỤC 1B → A3:R3      Hàng R4: tiêu đề dài → A4:R4
+  // Hàng R5: kỳ báo cáo → F5:K5
   ws["!merges"]=[
     // Header đơn vị
-    {s:{r:0,c:0},e:{r:0,c:5}},   // capTren A0:F0
-    {s:{r:0,c:6},e:{r:0,c:18}},  // CỘNG HÒA G0:S0
-    {s:{r:1,c:0},e:{r:1,c:5}},   // donVi A1:F1
-    {s:{r:1,c:6},e:{r:1,c:11}},  // Độc lập G1:L1
+    {s:{r:0,c:0},e:{r:0,c:4}},    // capTren A0:E0
+    {s:{r:0,c:7},e:{r:0,c:17}},   // CỘNG HÒA H0:R0
+    {s:{r:1,c:0},e:{r:1,c:4}},    // donVi A1:E1
+    {s:{r:1,c:7},e:{r:1,c:17}},   // Độc lập H1:R1
     // Tiêu đề
-    {s:{r:3,c:0},e:{r:3,c:19}},  // PHỤ LỤC 1B A3:T3
-    {s:{r:4,c:0},e:{r:4,c:19}},  // Tiêu đề dài A4:T4
-    // Kỳ báo cáo (cột F=5 → F6)
-    {s:{r:5,c:5},e:{r:5,c:12}},  // period F6:M6
-    // Header cột: R7, R8, R9 (0-based)
-    // Các cột span 3 hàng (R7:R9): A,B,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T
-    {s:{r:7,c:0},e:{r:9,c:0}},   // STT
-    {s:{r:7,c:1},e:{r:9,c:1}},   // Họ và tên
-    {s:{r:7,c:2},e:{r:7,c:3}},   // Năm sinh (gộp ngang C7:D7)
-    {s:{r:7,c:4},e:{r:9,c:4}},   // HKTT
-    {s:{r:7,c:5},e:{r:9,c:5}},   // CCCD
-    {s:{r:7,c:6},e:{r:9,c:6}},   // Tiền án
-    {s:{r:7,c:7},e:{r:9,c:7}},   // Hành vi
-    {s:{r:7,c:8},e:{r:9,c:8}},   // Dấu hiệu
-    {s:{r:7,c:9},e:{r:9,c:9}},   // Địa bàn
-    {s:{r:7,c:10},e:{r:9,c:10}}, // Diện QL
-    {s:{r:7,c:11},e:{r:9,c:11}}, // Đối sách
-    {s:{r:7,c:12},e:{r:9,c:12}}, // Đơn vị QL
-    {s:{r:7,c:13},e:{r:9,c:13}}, // Số lượt
-    {s:{r:7,c:14},e:{r:9,c:14}}, // TĐ vắng mặt
-    {s:{r:7,c:15},e:{r:9,c:15}}, // Lĩnh vực
-    {s:{r:7,c:16},e:{r:9,c:16}}, // TĐ đưa vào
-    {s:{r:7,c:17},e:{r:9,c:17}}, // Cán bộ
-    {s:{r:7,c:18},e:{r:9,c:18}}, // Chỉ huy
-    {s:{r:7,c:19},e:{r:9,c:19}}, // Tăng/Giảm
-    // Sub-header R8: Nam(C8), Nữ(D8) – không merge (đơn lẻ)
-    // Số TT R9 – không merge
+    {s:{r:3,c:0},e:{r:3,c:17}},   // PHỤ LỤC 1B A3:R3
+    {s:{r:4,c:0},e:{r:4,c:17}},   // Tiêu đề dài A4:R4
+    // Kỳ báo cáo (cột F=5 → F5:K5)
+    {s:{r:5,c:5},e:{r:5,c:10}},   // period F5:K5
+    {s:{r:6,c:0},e:{r:6,c:17}},   // dòng trống đệm A6:R6
+    // Header cột: gộp dọc R7:R8 (2 hàng) cho các cột không có sub-header;
+    // riêng "Năm sinh" gộp ngang C7:D7 (1 hàng, R8 tách Nam/Nữ)
+    {s:{r:7,c:0},e:{r:8,c:0}},    // STT
+    {s:{r:7,c:1},e:{r:8,c:1}},    // Họ và tên
+    {s:{r:7,c:2},e:{r:7,c:3}},    // Năm sinh (gộp ngang)
+    {s:{r:7,c:4},e:{r:8,c:4}},    // HKTT
+    {s:{r:7,c:5},e:{r:8,c:5}},    // CCCD
+    {s:{r:7,c:6},e:{r:8,c:6}},    // Tiền án
+    {s:{r:7,c:7},e:{r:8,c:7}},    // Hành vi
+    {s:{r:7,c:8},e:{r:8,c:8}},    // Dấu hiệu
+    {s:{r:7,c:9},e:{r:8,c:9}},    // Địa bàn
+    {s:{r:7,c:10},e:{r:8,c:10}},  // Diện QL
+    {s:{r:7,c:11},e:{r:8,c:11}},  // Đối sách
+    {s:{r:7,c:12},e:{r:8,c:12}},  // Đơn vị QL
+    {s:{r:7,c:13},e:{r:8,c:13}},  // Số lượt
+    {s:{r:7,c:14},e:{r:8,c:14}},  // TĐ vắng mặt
+    {s:{r:7,c:15},e:{r:8,c:15}},  // Lĩnh vực
+    {s:{r:7,c:16},e:{r:8,c:16}},  // TĐ đưa vào
+    {s:{r:7,c:17},e:{r:8,c:17}},  // Cán bộ
+    {s:{r:7,c:18},e:{r:8,c:18}},  // Chỉ huy
+    {s:{r:7,c:19},e:{r:8,c:19}},  // Tăng/Giảm
+    // Sub-header R8 (0-based, tức hàng 9 hiển thị): Nam(c2), Nữ(c3) – đơn lẻ
+    // Số TT R9 (0-based, tức hàng 10 hiển thị) – đơn lẻ, không gộp
+    // Footer: dòng ngày ký + chữ ký (vị trí phụ thuộc số dòng dữ liệu)
+    {s:{r:footerDateR,c:14},e:{r:footerDateR,c:19}}, // ngày ký O:T
+    {s:{r:footerNameR,c:2},e:{r:footerNameR,c:5}},   // TRƯỞNG CA C:F
+    {s:{r:footerNameR,c:16},e:{r:footerNameR,c:18}}, // CÁN BỘ TK Q:S
   ];
-  applySheetStyle(ws,[7,8,9],10,0,1,3,4);
+  applySheetStyle(ws,[7,8,9],10,0,1,3,5);
   return ws;
 }
 
@@ -2981,33 +3506,92 @@ function buildSheetHD26_BM1(period,bangNhom,diemTC){
   return ws;
 }
 
-// ── TB136 PL2B – Băng nhóm chi tiết ──
+// ── TB136 PL2B – Băng nhóm chi tiết — khớp chính xác cấu trúc file mẫu ──
 function buildSheetTB136_PL2B(period,bangNhom){
-  const h=["STT","Ngày đưa vào QL","Đơn vị QL","Tên BN/Biệt danh","ĐT cầm đầu","Số TV","Phân loại BN","Biểu hiện (1)","Biểu hiện (2)","Địa bàn HĐ","Địa bàn cụ thể","Số HS NV","Đối sách","Triệt xóa 1 phần","Triệt xóa toàn bộ","Ngày triệt xóa","Nội dung sau TX","Lĩnh vực","Cán bộ TD","Chỉ huy TD","Tăng/Giảm"];
+  const h=["STT","Ngày thống kê, đưa vào quản lý","Đơn vị quản lý (Đội/ cấp xã)","Tên băng nhóm/ Biệt danh","Họ tên đối tượng cầm đầu","Số lượng thành viên","Phân loại băng nhóm","Biểu hiện hoạt động (1)","Biểu hiện hoạt động (2)","Địa bàn hoạt động","Địa bàn, tuyến, lĩnh vực hoạt động cụ thể","Số hồ sơ NV quản lý băng nhóm","Đối sách đang áp dụng","Triệt xóa 01 phần","Triệt xóa toàn bộ","Ngày triệt xóa","Nội dung vụ việc (sau triệt xóa)","Lĩnh vực","Cán bộ được phân công theo dõi","Chỉ huy được phân công theo dõi","Tăng/ giảm (lý do)"];
+  const numRow=Array.from({length:21},(_,i)=>`(${i+1})`);
   const aoa=[
-    [CONFIG.capTren],[CONFIG.donVi],[],
-    ["PHỤ LỤC 2B – Thống kê băng nhóm nghi vấn về ma túy"],[period],[],h,
-    ...bangNhom.map((r,i)=>[i+1,fmtDate(r.ngay_dua_vao_ql),r.don_vi_ql,r.ten_bang_nhom,r.dt_cam_dau,r.so_thanh_vien,r.phan_loai,r.bh_hd_1,r.bh_hd_2,r.dia_ban_hd,r.dia_ban_ct,r.so_hs_nv,dv(r,"doi_sach"),boolX(r.triet_xoa_1_phan),boolX(r.triet_xoa_toan_bo),fmtDate(r.ngay_triet_xoa),r.nd_vu_viec,r.linh_vuc_bn,r.can_bo_theo_doi,r.chi_huy_theo_doi,r.tang_giam_ly_do])
+    [CONFIG.capTren.toUpperCase(),"","","","","","","CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","","","","","","","TB136"],
+    [CONFIG.donVi.toUpperCase(),"","","","","","","Độc lập - Tự do - Hạnh phúc"],
+    [],
+    ["PHỤ LỤC 2B"],
+    ["Thống kê kết quả rà soát, đấu tranh, xử lý băng nhóm nghi vấn hoạt động phạm tội về ma túy"],
+    [period],
+    [],
+    h,
+    numRow,
+    ...bangNhom.map((r,i)=>[i+1,fmtDate(r.ngay_dua_vao_ql),r.don_vi_ql,r.ten_bang_nhom,r.dt_cam_dau,r.so_thanh_vien,r.phan_loai,r.bh_hd_1,r.bh_hd_2,r.dia_ban_hd,r.dia_ban_ct,r.so_hs_nv,dv(r,"doi_sach"),boolX(r.triet_xoa_1_phan),boolX(r.triet_xoa_toan_bo),fmtDate(r.ngay_triet_xoa),r.nd_vu_viec,r.linh_vuc_bn,r.can_bo_theo_doi,r.chi_huy_theo_doi,r.tang_giam_ly_do]),
+    [],
   ];
+  const dataStartRow=9,dataEndRow=dataStartRow+bangNhom.length-1;
+  const footerR=dataEndRow+2;
+  const signDateRow=Array(21).fill("");signDateRow[11]="…......................, ngày ……... tháng …….... năm 2026";aoa.push(signDateRow);
+  const signNamesRow=Array(21).fill("");signNamesRow[2]="TRƯỞNG CÔNG AN PHƯỜNG TÂN BÌNH";signNamesRow[11]="CÁN BỘ THỐNG KÊ";aoa.push(signNamesRow);
+  aoa.push([]);
+  aoa.push(["","Ghi chú:"]);
+  [
+    "Mục (3): Xác định Đội và địa bàn chủ trì đấu tranh theo từng băng nhóm",
+    "Mục (5): Ghi nhận tên, năm sinh, nơi cư trú đối tượng cầm đầu hoạt động của băng nhóm",
+    "Mục (7): Ghi nhận phân loại băng nhóm theo quy định theo hệ lực lượng",
+    "Mục (8), (9): Ghi nhận theo hành vi nghi vấn phạm tội về ma túy quy định tại Bộ luật hình sự (trường hợp đối tượng có 2 hành vi nghi vấn trở lên, chọn 1 hành vi có tính đặc trưng, thường xuyên hơn, hành vi thứ 2 ghi nhận bổ sung tại cột (9)",
+    "Mục (10): Ghi nhận địa bàn nghi vấn hoạt động cụ thể (tại địa phương, khu vực liên địa bàn cấp xã cụ thể; liên tỉnh,…)",
+    "Mục (14), (15): Đánh chọn đối với trường hợp đã triệt xóa 1 phần (không còn nghi vấn hoạt động phạm tội nhưng vẫn hoạt động kinh doanh) hoặc triệt xóa toàn bộ (ngưng hoạt động)",
+    "Mục (18): Nhập lĩnh vực theo 05 lĩnh vực Điều tra cơ bản của lực lượng CSĐTTP về ma túy.",
+  ].forEach(n=>aoa.push(["",n]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=h.map((_,i)=>({wch:i===0?4:i===3||i===4||i===7||i===8?22:14}));
-  addStdMerges(ws,7,6);
-  applySheetStyle(ws,[6],7,0,1,3,4);
+  ws["!cols"]=h.map((_,i)=>({wch:i===0?4:i===3||i===4||i===7||i===8||i===16?24:14}));
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:4}},{s:{r:0,c:7},e:{r:0,c:17}},
+    {s:{r:1,c:0},e:{r:1,c:4}},{s:{r:1,c:7},e:{r:1,c:17}},
+    {s:{r:3,c:0},e:{r:3,c:17}},{s:{r:4,c:0},e:{r:4,c:17}},{s:{r:5,c:0},e:{r:5,c:17}},
+    {s:{r:footerR,c:11},e:{r:footerR,c:16}},
+    {s:{r:footerR+1,c:2},e:{r:footerR+1,c:5}},{s:{r:footerR+1,c:11},e:{r:footerR+1,c:16}},
+  ];
+  applySheetStyle(ws,[7,8],dataStartRow,0,1,3,5);
   return ws;
 }
 
-// ── TB136 PL3B – Điểm TC chi tiết ──
+// ── TB136 PL3B – Điểm TC chi tiết — khớp chính xác cấu trúc file mẫu ──
 function buildSheetTB136_PL3B(period,diemTC){
-  const h=["STT","Ngày đưa vào QL","Đơn vị QL","Loại hình","Tên điểm/Địa chỉ","Loại hình KD","ĐT cầm đầu","Biểu hiện NV","Số HS NV","Đối sách","Triệt xóa 1 phần","Triệt xóa toàn bộ","Cán bộ TD","Chỉ huy TD","Tăng/Giảm"];
+  const h=["STT","Ngày thống kê, đưa vào quản lý","Đơn vị cấp Đội/ xã chủ trì quản lý","Loại hình","Tên điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy; địa chỉ","Loại hình kinh doanh","Đối tượng cầm đầu","Biểu hiện nghi vấn","Số đăng ký hồ sơ nghiệp vụ quản lý (nếu có)","Đối sách đang áp dụng","Triệt xóa 01 phần","Triệt xóa toàn bộ/ ngưng hoạt động","Cán bộ được phân công theo dõi","Chỉ huy được phân công theo dõi","Tăng/ giảm (lý do)"];
+  const numRow=Array.from({length:15},(_,i)=>`(${i+1})`);
   const aoa=[
-    [CONFIG.capTren],[CONFIG.donVi],[],
-    ["PHỤ LỤC 3B – Thống kê điểm tổ chức, chứa chấp SDTPCMT"],[period],[],h,
-    ...diemTC.map((r,i)=>[i+1,fmtDate(r.ngay_dua_vao_ql),r.don_vi_ql,r.loai_hinh,r.ten_dia_chi,r.loai_hinh_kd,r.dt_cam_dau,r.bh_nghi_van,r.so_hs_nv,dv(r,"doi_sach"),boolX(r.triet_xoa_1_phan),boolX(r.triet_xoa_ngung_hd),r.can_bo_theo_doi,r.chi_huy_theo_doi,r.tang_giam_ly_do])
+    [CONFIG.capTren.toUpperCase(),"","","","","","","CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM","","","","","","","TB136"],
+    [CONFIG.donVi.toUpperCase(),"","","","","","","Độc lập - Tự do - Hạnh phúc"],
+    [],
+    ["PHỤ LỤC 3B"],
+    ["Thống kê kết quả rà soát, đấu tranh triệt xóa, chuyển hóa các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy (cụ thể)"],
+    [period],
+    [],
+    h,
+    numRow,
+    ...diemTC.map((r,i)=>[i+1,fmtDate(r.ngay_dua_vao_ql),r.don_vi_ql,r.loai_hinh,r.ten_dia_chi,r.loai_hinh_kd,r.dt_cam_dau,r.bh_nghi_van,r.so_hs_nv,dv(r,"doi_sach"),boolX(r.triet_xoa_1_phan),boolX(r.triet_xoa_ngung_hd),r.can_bo_theo_doi,r.chi_huy_theo_doi,r.tang_giam_ly_do]),
+    [],
   ];
+  const dataStartRow=9,dataEndRow=dataStartRow+diemTC.length-1;
+  const footerR=dataEndRow+2;
+  const signDateRow=Array(15).fill("");signDateRow[9]="….................., ngày …….. tháng …….. năm 2026";aoa.push(signDateRow);
+  const signNamesRow=Array(15).fill("");signNamesRow[2]="TRƯỞNG CÔNG AN PHƯỜNG";signNamesRow[9]="CÁN BỘ THỐNG KÊ";aoa.push(signNamesRow);
+  aoa.push([]);
+  aoa.push(["","Ghi chú:"]);
+  [
+    "Mục (4): Ghi nhận điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy",
+    "Mục (6): Ghi loại hình hoạt động kinh doanh, loại hình địa điểm của điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy (cơ sở kinh doanh cầm đồ, nhà hàng, khách sạn, massage, công viên, kho hàng,…)",
+    "Mục (7): Ghi nhận tên, năm sinh, nơi cư trú đối tượng cầm đầu hoạt động của điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy.",
+    "Mục (8): ghi nhận theo hành vi nghi vấn phạm tội về ma túy quy định tại Bộ luật hình sự",
+    "Mục (10): đối sách áp dụng với các đối tượng (gọi hỏi răn đe, xác minh biểu hiện để đấu tranh bắt giữ,…)",
+    "Mục (11): ghi rõ hình thức và ngày, tháng đối với trường hợp đã triệt xóa 1 phần (không còn nghi vấn hoạt động phạm tội nhưng vẫn hoạt động kinh doanh)",
+  ].forEach(n=>aoa.push(["",n]));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"]=h.map((_,i)=>({wch:i===0?4:i===4||i===7?28:14}));
-  addStdMerges(ws,7,6);
-  applySheetStyle(ws,[6],7,0,1,3,4);
+  ws["!merges"]=[
+    {s:{r:0,c:0},e:{r:0,c:4}},{s:{r:0,c:7},e:{r:0,c:13}},
+    {s:{r:1,c:0},e:{r:1,c:4}},{s:{r:1,c:7},e:{r:1,c:13}},
+    {s:{r:3,c:0},e:{r:3,c:13}},{s:{r:4,c:0},e:{r:4,c:13}},{s:{r:5,c:0},e:{r:5,c:13}},
+    {s:{r:footerR,c:9},e:{r:footerR,c:13}},
+    {s:{r:footerR+1,c:2},e:{r:footerR+1,c:5}},{s:{r:footerR+1,c:9},e:{r:footerR+1,c:13}},
+  ];
+  applySheetStyle(ws,[7,8],dataStartRow,0,1,3,5);
   return ws;
 }
 
@@ -3337,6 +3921,1270 @@ function buildSheetMauRaSoat(period,data){
   applySheetStyle(ws,[6,7],8,0,1,3,4);
   return ws;
 }
+// ══════════════════════════════════════════════════════════════════════════
+// MODULE v8.0 – ENGINE THỐNG KÊ TỰ ĐỘNG + BIỂU MẪU CHUẨN + XUẤT WORD
+// ------------------------------------------------------------------------
+// Mục tiêu:
+//  1) Mọi con số trong báo cáo được TÍNH TỰ ĐỘNG từ dữ liệu bản ghi
+//     (số đầu kỳ / phát sinh mới / thanh loại / hiện đang quản lý...),
+//     chỉ những chỉ tiêu KHÔNG thể suy ra từ dữ liệu mới lấy số nhập tay
+//     ở trang "Số liệu báo cáo tổng hợp".
+//  2) Bố cục sheet xuất ra khớp ĐÚNG các file biểu mẫu chính thức:
+//     - BC_TUAN_483_theo_TB_807.xlsx        (B2, B4, B5, B6, B7 – tuần)
+//     - Biểu mẫu thống kê 483 – Tháng theo TB 807.xlsx (B1…B8 – tháng)
+//     - BIEU_MAU_BAO_CAO_THEO_HD26.xlsx     (BM TỔNG, BM1, BM2)
+//     - BIEU_MAU_BAO_CAO_tuan_TB_136.xlsx   (PL1…PL3B)
+//     - DS_PHAT_SINH_MOI_THEO_QD28.xlsx     (PL1, PL2, PL3)
+//  3) Xuất 2 báo cáo Word theo đúng đề cương:
+//     - Đề cương báo cáo Hướng dẫn 26 (DC_HD26…BC_KET_QUA_RA_SOAT.doc)
+//     - Đề cương báo cáo Thông báo 136 (TB…DE_CUONG_BAO_CAO_THEO_THONG_BAO_136.doc)
+//  4) Kiểm tra logic số liệu trước khi xuất (đầu kỳ + phát sinh − thanh loại
+//     = hiện đang quản lý; tổng thành phần ≤ tổng chung…).
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Tiện ích ngày tháng / số ─────────────────────────────────────────────
+function _pd(v){
+  if(!v)return null;
+  if(v instanceof Date)return isNaN(v.getTime())?null:v;
+  const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  const d=new Date(s);
+  return isNaN(d.getTime())?null:d;
+}
+function _inRg(v,from,to){
+  const d=_pd(v);if(!d)return false;
+  if(from){const f=_pd(from);if(f&&d<f)return false;}
+  if(to){const t=_pd(to);if(t){t.setHours(23,59,59,999);if(d>t)return false;}}
+  return true;
+}
+function _beforeFrom(v,from){
+  if(!from)return false;
+  const d=_pd(v),f=_pd(from);
+  if(!d||!f)return false;
+  return d<f;
+}
+const numv=v=>{const n=Number(v);return isNaN(n)?0:n;};
+// pkv: ưu tiên số NHẬP TAY (nếu người dùng đã nhập), ngược lại dùng số TỰ TÍNH
+const pkv=(manual,auto)=>(manual===undefined||manual===null||manual==="")?numv(auto):numv(manual);
+const n2=v=>{const n=numv(v);return n<10?"0"+n:String(n);};
+const _uniq=arr=>[...new Set(arr.filter(x=>x!==""&&x!==undefined&&x!==null))].length;
+
+// Phân loại lý do loại → nhóm cột "Số thanh loại" của Phụ lục 1 TB136
+function _tlBucket(v){
+  const s=String(v||"").toLowerCase();
+  if(/khởi tố|khoi to|hình sự|hinh su|bị can/.test(s))return"khoi_to";
+  if(/hành chính|hanh chinh|xử phạt|xu phat|xlhc/.test(s))return"xlhc";
+  if(/cai nghiện bắt buộc|cai bat buoc|cơ sở giáo dục|trường giáo dưỡng|csgd|tgd|đưa đi cai/.test(s))return"cai_bb";
+  if(/bỏ đi|bo di|chuyển nơi cư trú|chuyen noi cu tru|không rõ nơi đến|đi khỏi/.test(s))return"bo_di";
+  if(/tiến bộ|tien bo|không còn sử dụng|khong con su dung|chết|tử vong|đã mất/.test(s))return"tien_bo";
+  return"khac";
+}
+// Phân loại địa bàn hoạt động → Trong xã / Liên xã / Liên tỉnh
+function _dbBucket(v){
+  const s=String(v||"").toLowerCase();
+  if(/liên tỉnh|lien tinh/.test(s))return"lien_tinh";
+  if(/liên (cấp )?xã|lien (cap )?xa|liên phường|lien phuong|liên địa bàn/.test(s))return"lien_xa";
+  if(/trong (cấp )?xã|trong (cap )?xa|trong phường|trong địa bàn|nội bộ/.test(s))return"trong_xa";
+  return"";
+}
+// Nhận diện diện quản lý nghiệp vụ từ ô "Diện QL – Số hồ sơ NV" / "Đối sách"
+function _nvKind(r){
+  const s=(String(r.dien_ql_so_hs||"")+" "+String(r.doi_sach_xl||"")+" "+String(r.dql_nvu||"")).toLowerCase();
+  const out={st:false,hn:false,ca:false};
+  if(/sưu tra|suu tra/.test(s))out.st=true;
+  if(/hiềm nghi|hiem nghi/.test(s))out.hn=true;
+  if(/chuyên án|chuyen an/.test(s))out.ca=true;
+  return out;
+}
+// Tội danh (phục vụ B5 – vụ án do đối tượng quản lý gây ra)
+const _TOI={
+  gn:/giết người|giet nguoi|điều 123/i,
+  cy:/cố ý gây thương tích|co y gay thuong tich|điều 134/i,
+  cuop:/cướp|cuop|điều 168|điều 171/i,
+  trom:/trộm cắp|trom cap|điều 173/i,
+  gr:/gây rối|gay roi|điều 318|ttatxh/i,
+  mt:/ma túy|ma tuy|điều 24[89]|điều 25[0-9]|256a/i,
+};
+const _is256a=r=>/256a/i.test(String(r.hanh_vi_chinh||"")+" "+String(r.hanh_vi_khac||"")+" "+String(r.toi_danh_chinh||""));
+const _isKhoiTo=r=>!!(r.kt_qd_khoi_to_bc||r.kt_ngay_khoi_to_bc||r.kt_truong_hop_bat||r.kt_bp_ngan_chan);
+const _isXLHC=r=>!!(r.kq_xlhc_bpxp||r.kq_xlhc_bpxlhc||r.kq_xlhc_thathe);
+// Khóa gom vụ (đếm "số vụ" thay vì "số đối tượng")
+const _vuKey=r=>String(r.ma_vu_viec_lien_quan||r.trich_yeu||((r.ngay_ph_hv||"")+"|"+(r.hanh_vi_chinh||"")));
+
+// ══════════════════════════════════════════════════════════════════════════
+// ENGINE THỐNG KÊ – computeStats(data, dr)
+// ══════════════════════════════════════════════════════════════════════════
+function computeStats(data,dr){
+  const from=(dr&&dr.from)||"",to=(dr&&dr.to)||"";
+  const all=(data.doi_tuong||[]);
+  const G=k=>(data[k]||[]);
+  const act=list=>list.filter(r=>!r.da_loai);
+
+  // ── Biến động 1 nhóm quản lý (SD / NG / SC / …) ──
+  function bienDong(nhomId){
+    const list=G(nhomId);
+    // Số đầu kỳ: đã vào sổ trước kỳ (hoặc không ghi ngày) và chưa bị loại trước kỳ
+    const dauKy=list.filter(r=>{
+      const vs=r.ngay_vao_so;
+      const daVaoTruocKy=from?(!_pd(vs)||_beforeFrom(vs,from)):(!_pd(vs));
+      if(!daVaoTruocKy)return false;
+      if(r.da_loai){
+        if(!from)return false;                       // toàn thời gian: đã loại thì không thuộc đầu kỳ
+        if(_beforeFrom(r.ngay_loai,from))return false;// loại trước kỳ → không còn đầu kỳ
+        if(!r.ngay_loai)return false;                // loại không rõ ngày → coi như trước kỳ
+      }
+      return true;
+    }).length;
+    // Phát sinh mới trong kỳ
+    const psList=list.filter(r=>{
+      const dt=r.thoi_gian_ps||r.ngay_vao_so;
+      return from||to?_inRg(dt,from,to):!!_pd(dt);
+    });
+    const psMoi=psList.length;
+    // Thanh loại trong kỳ (loại toàn bộ + loại khỏi riêng nhóm này)
+    const tlList=list.filter(r=>r.da_loai&&(from||to?_inRg(r.ngay_loai,from,to):true));
+    const tlHist=[];
+    all.forEach(r=>{
+      (r.nhom_loai_history||[]).forEach(h=>{
+        if(h.nhom===nhomId&&(from||to?_inRg(h.ngay_loai,from,to):true))
+          tlHist.push({...r,ly_do_loai:h.ly_do_loai,ngay_loai:h.ngay_loai});
+      });
+    });
+    const tlAll=[...tlList,...tlHist];
+    const tl={tong:tlAll.length,khoi_to:0,xlhc:0,cai_bb:0,bo_di:0,tien_bo:0,khac:0};
+    tlAll.forEach(r=>{tl[_tlBucket(r.ly_do_loai)]++;});
+    const hienCon=dauKy+psMoi-tl.tong;
+    return{list,act:act(list),dauKy,psMoi,psList,tl,tlList:tlAll,hienCon,thucTe:act(list).length};
+  }
+
+  const sd=bienDong("su_dung"),ng=bienDong("nghien"),sc=bienDong("sau_cai");
+
+  // ── Cập nhật phần mềm quản lý đối tượng ──
+  const daNhap=l=>l.filter(r=>String(r.cap_nhat_pm||"").trim()==="Đã nhập").length;
+  const chuaNhap=l=>l.filter(r=>String(r.cap_nhat_pm||"").trim()!=="Đã nhập");
+  const pm={
+    sd:{tong:sd.act.length,nhap:daNhap(sd.act)},
+    ng:{tong:ng.act.length,nhap:daNhap(ng.act)},
+    sc:{tong:sc.act.length,nhap:daNhap(sc.act)},
+    dsChua:[
+      ...chuaNhap(sd.act).map(r=>({...r,_dien:"Người sử dụng"})),
+      ...chuaNhap(ng.act).map(r=>({...r,_dien:"Người nghiện"})),
+      ...chuaNhap(sc.act).map(r=>({...r,_dien:"Sau cai"})),
+    ],
+  };
+
+  // ── Nơi ở đặc biệt (B2 tháng) ──
+  const noiO={
+    sd_ttg:sd.act.filter(r=>r.trong_nha_tam_giam).length,
+    ng_ttg:ng.act.filter(r=>r.trong_nha_tam_giam).length,
+    ng_cscn:ng.act.filter(r=>r.trong_co_so_cai_nghien).length,
+  };
+  noiO.sd_xh=sd.act.length-noiO.sd_ttg;
+  noiO.ng_xh=ng.act.length-noiO.ng_ttg-noiO.ng_cscn;
+  noiO.sc_xh=sc.act.length;
+
+  // ── VPPL: xét nghiệm, vụ án, Điều 256a (B4, B5, B6) ──
+  const vpAll=(data.vppl||[]).filter(r=>!r.da_loai);
+  const vp=(from||to)?vpAll.filter(r=>_inRg(r.ngay_ph_hv||r.kt_ngay_bat||r.ngay_bc,from,to)):vpAll;
+  // "Có trong danh sách quản lý" = đối tượng thuộc diện SD/Nghiện/Sau cai
+  const cccdQL=new Set([...sd.act,...ng.act,...sc.act].map(r=>String(r.cccd||"").trim()).filter(Boolean));
+  const trongDS=r=>{
+    const nh=r.nhom||[];
+    if(nh.includes("su_dung")||nh.includes("nghien")||nh.includes("sau_cai"))return true;
+    const c=String(r.cccd||"").trim();
+    return !!(c&&cccdQL.has(c));
+  };
+  const dt=vp.filter(r=>r.test_ma_tuy);                 // dương tính với ma túy
+  const dtNgoai=dt.filter(r=>!trongDS(r));
+  const dtHC=dt.filter(r=>_isXLHC(r)&&!_isKhoiTo(r));
+  const dtHS=dt.filter(r=>_isKhoiTo(r));
+  const b4={
+    tong_xn:vp.filter(r=>r.test_ma_tuy||r.loai_ma_tuy_dt).length,
+    duong_tinh:dt.length,
+    dt_ngoai_ds:dtNgoai.length,
+    xlhc_so_vu:_uniq(dtHC.map(_vuKey)),
+    xlhc_dt:dtHC.length,
+    xlhc_ngoai_ds:dtHC.filter(r=>!trongDS(r)).length,
+    hs_so_vu:_uniq(dtHS.map(_vuKey)),
+    hs_dt:dtHS.length,
+    hs_ngoai_ds:dtHS.filter(r=>!trongDS(r)).length,
+    ds:dt,
+  };
+
+  // B5 – vụ án do người SD/nghiện/sau cai gây ra
+  const gayAn=vp.filter(r=>trongDS(r)&&(r.hanh_vi_chinh||r.hanh_vi_khac));
+  const byToi=re=>gayAn.filter(r=>re.test(String(r.hanh_vi_chinh||"")+" "+String(r.hanh_vi_khac||"")));
+  const mk=(re)=>{const l=byToi(re);return{vu:_uniq(l.map(_vuKey)),dt:l.length};};
+  const b5={
+    ma_tuy:mk(_TOI.mt),gn:mk(_TOI.gn),cy:mk(_TOI.cy),
+    cuop:mk(_TOI.cuop),trom:mk(_TOI.trom),gr:mk(_TOI.gr),
+    ds:gayAn,
+  };
+
+  // B6 – Điều 256a
+  const l256=vp.filter(_is256a);
+  const b6={
+    so_vu:_uniq(l256.map(_vuKey)),
+    so_dt:l256.length,
+    nam:l256.filter(r=>String(r.gioi_tinh||"")==="Nam").length,
+    nu:l256.filter(r=>String(r.gioi_tinh||"")==="Nữ").length,
+    dang_cai:l256.filter(r=>r.d256a_dang_cai).length,
+    trong_ql_sc:l256.filter(r=>r.d256a_trong_qlsc).length,
+    trong_2nam_sc:l256.filter(r=>r.d256a_2nam_het_qlsc).length,
+    tu_y_bo_cai:l256.filter(r=>r.d256a_2nam_tu_y_bo).length,
+    ds:l256,
+  };
+
+  // ── TB136 – PL1 (đối tượng trong diện quản lý) ──
+  // Diện quản lý TB136 = toàn bộ đối tượng đang theo dõi (mọi nhóm), tính 1 lần/người
+  const dtAll=all.filter(r=>!r.da_loai);
+  const tb136DauKy=all.filter(r=>{
+    const vs=r.thoi_diem_dua_vao_ql||r.ngay_vao_so;
+    const truocKy=from?(!_pd(vs)||_beforeFrom(vs,from)):(!_pd(vs));
+    if(!truocKy)return false;
+    if(r.da_loai){
+      if(!from)return false;
+      if(!r.ngay_loai||_beforeFrom(r.ngay_loai,from))return false;
+    }
+    return true;
+  }).length;
+  const tb136Ps=all.filter(r=>{
+    const vs=r.thoi_diem_dua_vao_ql||r.thoi_gian_ps||r.ngay_vao_so;
+    return from||to?_inRg(vs,from,to):!!_pd(vs);
+  }).length;
+  const tb136TlList=all.filter(r=>r.da_loai&&(from||to?_inRg(r.ngay_loai,from,to):true));
+  const tb136Tl={tong:tb136TlList.length,khoi_to:0,xlhc:0,cai_bb:0,bo_di:0,tien_bo:0,khac:0};
+  tb136TlList.forEach(r=>{tb136Tl[_tlBucket(r.ly_do_loai)]++;});
+  const db={trong_xa:0,lien_xa:0,lien_tinh:0};
+  dtAll.forEach(r=>{const b=_dbBucket(r.dia_ban_nghi_van||r.dia_ban_hd);if(b)db[b]++;});
+  let bpST=0,bpHN=0,bpCA=0;
+  dtAll.forEach(r=>{
+    const k=_nvKind(r);
+    if((r.nhom||[]).includes("suu_tra")||k.st)bpST++;
+    if(k.hn)bpHN++;
+    if(k.ca)bpCA++;
+  });
+  const bpPL=dtAll.filter(r=>(r.nhom||[]).some(n=>["su_dung","nghien","sau_cai"].includes(n))).length;
+  const tb136={
+    so_dau_ky:tb136DauKy,ps_moi:tb136Ps,
+    tl_tong:tb136Tl.tong,tl_khoi_to:tb136Tl.khoi_to,tl_xlhc:tb136Tl.xlhc,
+    tl_cai_bb:tb136Tl.cai_bb,tl_bo_di:tb136Tl.bo_di,tl_tien_bo:tb136Tl.tien_bo,tl_khac:tb136Tl.khac,
+    hien_ql:tb136DauKy+tb136Ps-tb136Tl.tong,
+    db_trong_xa:db.trong_xa,db_lien_xa:db.lien_xa,db_lien_tinh:db.lien_tinh,
+    bp_theo_pl:bpPL,bp_suu_tra:bpST,bp_hiem_nghi_ca:bpHN+bpCA,
+    bp_hiem_nghi:bpHN,bp_chuyen_an:bpCA,bp_khac:0,
+    thucTe:dtAll.length,
+  };
+
+  // ── TB136 – PL2 (băng nhóm) ──
+  const bnAll=(data.bang_nhom||[]);
+  const bnAct=bnAll.filter(r=>!r.da_loai);
+  const bnDauKy=bnAll.filter(r=>from?(!_pd(r.ngay_dua_vao_ql)||_beforeFrom(r.ngay_dua_vao_ql,from)):!_pd(r.ngay_dua_vao_ql)).length;
+  const bnPs=bnAll.filter(r=>from||to?_inRg(r.ngay_dua_vao_ql,from,to):!!_pd(r.ngay_dua_vao_ql)).length;
+  const bnTlList=bnAll.filter(r=>(r.triet_xoa_toan_bo||r.kq_giai_quyet)&&(from||to?_inRg(r.ngay_triet_xoa||r.ngay_giai_quyet,from,to):true));
+  const bnTl={tong:bnTlList.length,khoi_to:0,xlhc:0,tan_ra:0,khac:0};
+  bnTlList.forEach(r=>{
+    const s=String(r.kq_giai_quyet||"").toLowerCase();
+    if(/khởi tố/.test(s))bnTl.khoi_to++;
+    else if(/hành chính/.test(s))bnTl.xlhc++;
+    else if(/tan rã/.test(s))bnTl.tan_ra++;
+    else bnTl.khac++;
+  });
+  const bnDb={trong_xa:0,lien_xa:0,lien_tinh:0};
+  bnAct.forEach(r=>{const b=_dbBucket(r.dia_ban_hd);if(b)bnDb[b]++;});
+  const bnDs={ca:0,hn:0,kh:0,khac:0};
+  bnAct.forEach(r=>{
+    const s=String(r.doi_sach||"").toLowerCase();
+    if(/chuyên án/.test(s))bnDs.ca++;
+    else if(/hiềm nghi/.test(s))bnDs.hn++;
+    else if(/kế hoạch/.test(s))bnDs.kh++;
+    else if(s)bnDs.khac++;
+  });
+  const pl2={
+    bn_dau_ky:bnDauKy,bn_ps_moi:bnPs,bn_tl_tong:bnTl.tong,bn_tl_khoi_to:bnTl.khoi_to,
+    bn_tl_xlhc:bnTl.xlhc,bn_tl_tan_ra:bnTl.tan_ra,bn_tl_khac:bnTl.khac,
+    bn_hien_ql:bnDauKy+bnPs-bnTl.tong,
+    bn_db_trong_xa:bnDb.trong_xa,bn_db_lien_xa:bnDb.lien_xa,bn_db_lien_tinh:bnDb.lien_tinh,
+    bn_ds_xlap_ca:bnDs.ca,bn_ds_xac_lap_hn:bnDs.hn,bn_ds_lap_kh:bnDs.kh,bn_ds_khac:bnDs.khac,
+    thucTe:bnAct.length,
+  };
+
+  // ── TB136 – PL3 (điểm tổ chức, chứa chấp) ──
+  const dcAll=(data.diem_tc||[]);
+  const dcAct=dcAll.filter(r=>!r.da_loai);
+  const isTC=r=>/tổ chức/i.test(String(r.loai_hinh||""));
+  const isCC=r=>/chứa chấp/i.test(String(r.loai_hinh||""));
+  const dcDauKy=dcAll.filter(r=>from?(!_pd(r.ngay_dua_vao_ql)||_beforeFrom(r.ngay_dua_vao_ql,from)):!_pd(r.ngay_dua_vao_ql)).length;
+  const dcPs=dcAll.filter(r=>from||to?_inRg(r.ngay_dua_vao_ql,from,to):!!_pd(r.ngay_dua_vao_ql)).length;
+  const dcTlList=dcAll.filter(r=>(r.triet_xoa_ngung_hd||r.kq_giai_quyet)&&(from||to?_inRg(r.ngay_giai_quyet||r.ngay_triet_xoa,from,to):true));
+  const dcTl={tong:dcTlList.length,khoi_to:0,xlhc:0,dung:0,khac:0};
+  dcTlList.forEach(r=>{
+    const s=String(r.kq_giai_quyet||"").toLowerCase();
+    if(/khởi tố/.test(s))dcTl.khoi_to++;
+    else if(/hành chính/.test(s))dcTl.xlhc++;
+    else if(/dừng|ngưng/.test(s))dcTl.dung++;
+    else dcTl.khac++;
+  });
+  const dcDs={kh:0,ktxl:0,theo_doi:0,khac:0};
+  dcAct.forEach(r=>{
+    const s=String(r.doi_sach||"").toLowerCase();
+    if(/kế hoạch/.test(s))dcDs.kh++;
+    else if(/kiểm tra/.test(s))dcDs.ktxl++;
+    else if(/theo dõi|xác minh/.test(s))dcDs.theo_doi++;
+    else if(s)dcDs.khac++;
+  });
+  const pl3={
+    diem_dau_ky:dcDauKy,diem_ps_moi:dcPs,diem_tl_tong:dcTl.tong,diem_tl_khoi_to:dcTl.khoi_to,
+    diem_tl_xlhc:dcTl.xlhc,diem_tl_dung:dcTl.dung,diem_tl_khac:dcTl.khac,
+    diem_hien_tc:dcAct.filter(isTC).length,diem_hien_cc:dcAct.filter(isCC).length,
+    diem_ql_to_chuc:dcAct.filter(isTC).length,diem_ql_chua_chap:dcAct.filter(isCC).length,
+    diem_ds_kh:dcDs.kh,diem_ds_ktxl:dcDs.ktxl,diem_ds_theo_doi:dcDs.theo_doi,diem_ds_khac:dcDs.khac,
+    thucTe:dcAct.length,
+  };
+
+  // ── Hướng dẫn 26 ──
+  const hdAll=(data.hd26_dt||[]);
+  const isBan=r=>/mua|bán/i.test(String(r.loai_hinh_hd26||""));
+  const isDiem=r=>/điểm/i.test(String(r.loai_hinh_hd26||""));
+  const hdBan=hdAll.filter(r=>!r.da_loai&&isBan(r));
+  const hdDiem=[...hdAll.filter(r=>!r.da_loai&&isDiem(r))];
+  const daGQ=r=>!!r.kq_giai_quyet;
+  const gqBucket=r=>{
+    const s=String(r.kq_giai_quyet||"").toLowerCase();
+    if(/triệt xóa/.test(s))return"triet_xoa";
+    if(/vô hiệu/.test(s))return"vo_hieu";
+    return"khong_bh";
+  };
+  function hdStat(list){
+    const dauKy=list.filter(r=>from?(!_pd(r.thoi_gian_xet_duyet)||_beforeFrom(r.thoi_gian_xet_duyet,from)):!_pd(r.thoi_gian_xet_duyet)).length;
+    const ps=list.filter(r=>from||to?_inRg(r.thoi_gian_xet_duyet,from,to):!!_pd(r.thoi_gian_xet_duyet)).length;
+    const gq=list.filter(r=>daGQ(r)&&(from||to?_inRg(r.ngay_giai_quyet,from,to):true));
+    const b={triet_xoa:0,khong_bh:0,vo_hieu:0};
+    gq.forEach(r=>{b[gqBucket(r)]++;});
+    return{dauKy,ps,gqTong:gq.length,...b,hienCon:dauKy+ps-gq.length,list};
+  }
+  const hdB=hdStat(hdBan),hdD=hdStat(hdDiem);
+  // Kết quả điều tra, xử lý (từ chính các bản ghi HD26)
+  const xlList=hdAll.filter(r=>!r.da_loai&&(r.xu_ly_hinh_su||r.xu_ly_hanh_chinh));
+  const hvCount=re=>hdAll.filter(r=>!r.da_loai&&r.xu_ly_hinh_su&&re.test(String(r.hanh_vi_xl||""))).length;
+  const hd26={
+    dt_ban_thang_truoc:hdB.dauKy,diem_tc_thang_truoc:hdD.dauKy,
+    dt_ban_hien_con:hdB.hienCon,diem_tc_hien_con:hdD.hienCon,
+    dt_ban_ps_moi:hdB.ps,diem_tc_ps_moi:hdD.ps,
+    dt_ban_triet_xoa:hdB.triet_xoa,dt_ban_khong_bh:hdB.khong_bh,dt_ban_vo_hieu:hdB.vo_hieu,
+    diem_tc_triet_xoa:hdD.triet_xoa,diem_tc_khong_bh:hdD.khong_bh,diem_tc_vo_hieu:hdD.vo_hieu,
+    xl_tong_vu:_uniq(xlList.map(r=>r.so_vu_lq||r.ho_ten_ten_diem)),
+    xl_hs_tong_dt:hdAll.filter(r=>!r.da_loai&&r.xu_ly_hinh_su).length,
+    xl_hs_tang_tru:hvCount(/tàng trữ/i),
+    xl_hs_tc_sd:hvCount(/tổ chức/i),
+    xl_hs_cc_sd:hvCount(/chứa chấp/i),
+    xl_hs_sd:hvCount(/^sử dụng|sử dụng trái phép/i),
+    xl_hs_khac:hvCount(/mua bán|vận chuyển|khác/i),
+    xl_duong_tinh:hdAll.filter(r=>!r.da_loai&&r.duong_tinh_hd26).length,
+    xl_xlhc:hdAll.filter(r=>!r.da_loai&&r.xu_ly_hanh_chinh).length,
+    // 3 cột dưới đây thống kê ĐỐI TƯỢNG BỊ BẮT, GIỮ trong kỳ thuộc từng diện quản lý
+    dt_ql_phap_luat:vp.filter(r=>trongDS(r)).length,
+    dt_ql_nvu:vp.filter(r=>{const k=_nvKind(r);return k.st||k.hn||k.ca||(r.nhom||[]).includes("suu_tra");}).length,
+    dt_ql_giam_cau:vp.filter(r=>trongDS(r)).length,
+    _ban:hdB,_diem:hdD,_all:hdAll.filter(r=>!r.da_loai),
+  };
+
+  return{
+    from,to,
+    period:(from&&to)?`Từ ngày ${fmtDate(from)} đến ngày ${fmtDate(to)}`:"Toàn bộ thời gian",
+    sd,ng,sc,pm,noiO,b4,b5,b6,tb136,pl2,pl3,hd26,
+    suuTra:(data.suu_tra||[]).filter(r=>!r.da_loai).length,
+    nghiVan:(data.nghi_van||[]).filter(r=>!r.da_loai).length,
+  };
+}
+
+// ── Kiểm tra logic số liệu trước khi xuất ────────────────────────────────
+function validateStats(S){
+  const w=[];
+  const chk=(lbl,tinh,thucTe)=>{
+    if(tinh!==thucTe)w.push(`${lbl}: đầu kỳ + phát sinh − thanh loại = ${tinh}, nhưng danh sách đang quản lý thực tế có ${thucTe} bản ghi. Kiểm tra lại Ngày vào sổ / Ngày loại.`);
+  };
+  chk("Người sử dụng TPCMT",S.sd.hienCon,S.sd.thucTe);
+  chk("Người nghiện ma túy",S.ng.hienCon,S.ng.thucTe);
+  chk("Người bị quản lý sau cai",S.sc.hienCon,S.sc.thucTe);
+  chk("Đối tượng diện TB136",S.tb136.hien_ql,S.tb136.thucTe);
+  chk("Băng nhóm (TB136 PL2)",S.pl2.bn_hien_ql,S.pl2.thucTe);
+  chk("Điểm TC/CC (TB136 PL3)",S.pl3.diem_dau_ky+S.pl3.diem_ps_moi-S.pl3.diem_tl_tong,S.pl3.thucTe);
+  const tlSum=S.tb136.tl_khoi_to+S.tb136.tl_xlhc+S.tb136.tl_cai_bb+S.tb136.tl_bo_di+S.tb136.tl_tien_bo+S.tb136.tl_khac;
+  if(tlSum!==S.tb136.tl_tong)w.push(`TB136 PL1: tổng các cột thanh loại (${tlSum}) khác cột "Tổng" (${S.tb136.tl_tong}).`);
+  if(S.b4.duong_tinh<S.b4.xlhc_dt+S.b4.hs_dt)w.push(`B4: số đối tượng dương tính (${S.b4.duong_tinh}) nhỏ hơn tổng số bị XLHC + khởi tố (${S.b4.xlhc_dt+S.b4.hs_dt}).`);
+  if(S.b6.nam+S.b6.nu>S.b6.so_dt)w.push(`B6 (Điều 256a): Nam + Nữ (${S.b6.nam+S.b6.nu}) lớn hơn tổng số đối tượng (${S.b6.so_dt}).`);
+  if(S.pm.sd.nhap>S.pm.sd.tong||S.pm.ng.nhap>S.pm.ng.tong||S.pm.sc.nhap>S.pm.sc.tong)
+    w.push("B3: số đã cập nhật phần mềm lớn hơn tổng số đang quản lý.");
+  return w;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TẠO WORKSHEET THEO BỐ CỤC BIỂU MẪU (giữ font Times New Roman 14, kẻ khung)
+// ══════════════════════════════════════════════════════════════════════════
+function _ws8(aoa,o){
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  if(o.cols)ws["!cols"]=o.cols;
+  if(o.merges)ws["!merges"]=o.merges;
+  const hdr=new Set(o.hdr||[]);
+  const cap=new Set(o.cap||[]);
+  const sign=new Set(o.sign||[]);
+  const dFrom=o.dataFrom,dTo=(o.dataTo===undefined?-1:o.dataTo);
+  const rg=XLSX.utils.decode_range(ws["!ref"]);
+  for(let R=rg.s.r;R<=rg.e.r;R++){
+    for(let C=rg.s.c;C<=rg.e.c;C++){
+      const addr=XLSX.utils.encode_cell({r:R,c:C});
+      const cell=ws[addr];
+      let font=XS.font,fill=null,border=null,h="left";
+      if(cap.has(R)){font=XS.fontCapTren;h=C===0?"left":"center";}
+      else if(R===o.titleRow){font=XS.fontTitle;h="center";}
+      else if(R===o.subRow){font=XS.fontSub;h="center";}
+      else if(hdr.has(R)){font=XS.fontHead;fill=XS.fillHead;border=BORDER_ALL;h="center";}
+      else if(sign.has(R)){font=XS.fontBold;h="center";}
+      else if(dFrom!==undefined&&R>=dFrom&&R<=dTo){
+        border=BORDER_ALL;
+        const v=cell?cell.v:"";
+        h=(C===0||typeof v==="number"||String(v).length<=6)?"center":"left";
+      }
+      const s={font,alignment:{horizontal:h,vertical:"center",wrapText:true}};
+      if(fill)s.fill=fill;
+      if(border)s.border=border;
+      if(cell)cell.s=s;
+      else if(hdr.has(R)||(dFrom!==undefined&&R>=dFrom&&R<=dTo))ws[addr]={v:"",t:"s",s};
+    }
+  }
+  ws["!rows"]=[];
+  for(let R=rg.s.r;R<=rg.e.r;R++){
+    if(hdr.has(R))ws["!rows"][R]={hpt:o.hdrH||46};
+    else if(R===o.titleRow)ws["!rows"][R]={hpt:38};
+    else if(dFrom!==undefined&&R>=dFrom&&R<=dTo)ws["!rows"][R]={hpt:28};
+    else ws["!rows"][R]={hpt:18};
+  }
+  return ws;
+}
+const _m=(r1,c1,r2,c2)=>({s:{r:r1,c:c1},e:{r:r2,c:c2}});
+const _cw=(n,def,map)=>Array.from({length:n},(_,i)=>({wch:(map&&map[i])||def}));
+const _row=(n,vals)=>{const a=Array(n).fill("");Object.keys(vals||{}).forEach(k=>{a[+k]=vals[k];});return a;};
+const _DV=()=>CONFIG.donVi;
+const _kyText=S=>S.from&&S.to?`(Thời gian: từ ngày ${fmtDate(S.from)} đến ngày ${fmtDate(S.to)})`:"(Toàn bộ thời gian)";
+
+// ══════════════════════════════════════════════════════════════════════════
+// BÁO CÁO TUẦN THEO THÔNG BÁO 807 (khớp file BC_TUAN_483_theo_TB_807.xlsx)
+// ══════════════════════════════════════════════════════════════════════════
+function bs807W_B2(S){
+  const NC=8;
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),
+    _row(NC,{0:CONFIG.donVi.toUpperCase()}),
+    [],
+    _row(NC,{0:"QUẢN LÝ NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TUÝ, NGƯỜI NGHIỆN MA TUÝ, NGƯỜI BỊ QUẢN LÝ SAU CAI VÀ TỶ LỆ CẬP NHẬT LÊN PHẦN MỀM QUẢN LÝ ĐỐI TƯỢNG\n"+_kyText(S)}),
+    ["TT","Đơn vị","Người SDTPCMT","","Người nghiện ma tuý","","Người bị quản lý sau cai",""],
+    ["","","Tổng số","Phần mềm Quản lý đối tượng","Tổng số","Phần mềm Quản lý đối tượng","Tổng số","Phần mềm Quản lý đối tượng"],
+    [1,_DV(),S.pm.sd.tong,S.pm.sd.nhap,S.pm.ng.tong,S.pm.ng.nhap,S.pm.sc.tong,S.pm.sc.nhap],
+    [],
+    _row(NC,{1:"CÁN BỘ THỐNG KÊ",5:"TRƯỞNG ĐƠN VỊ"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:26}),cap:[0,1],titleRow:3,hdr:[4,5],dataFrom:6,dataTo:6,sign:[8],
+    merges:[_m(0,0,0,2),_m(1,0,1,2),_m(3,0,3,NC-1),
+      _m(4,0,5,0),_m(4,1,5,1),_m(4,2,4,3),_m(4,4,4,5),_m(4,6,4,7),
+      _m(8,1,8,2),_m(8,5,8,7)],
+  });
+}
+function bs807W_B4(S,rpt){
+  const NC=11,b=(rpt&&rpt.b4)||{},A=S.b4;
+  const v=k=>pkv(b[k],A[k]);
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),_row(NC,{0:CONFIG.donVi.toUpperCase()}),[],
+    _row(NC,{0:"KẾT QUẢ XÉT NGHIỆM CHẤT MA TÚY TRONG CƠ THỂ VÀ XỬ LÝ ĐỐI TƯỢNG DƯƠNG TÍNH VỚI MA TÚY\n"+_kyText(S)}),
+    ["STT","Đơn vị","Tổng số đối tượng xét nghiệm","Kết quả xét nghiệm","","Kết quả xử lý đối tượng dương tính với ma túy","","","","",""],
+    ["","","","Tổng số dương tính","Tổng số đối tượng không có trong danh sách quản lý","Số đối tượng bị xử lý vi phạm hành chính","","","Số đối tượng bị khởi tố hình sự","",""],
+    ["","","","","","Số vụ","Số đối tượng dương tính bị xử lý vi phạm hành chính","Số đối tượng dương tính với ma tuý không có trong danh sách quản lý","Số vụ","Tổng số đối tượng dương tính với ma tuý bị xử lý hình sự","Số đối tượng dương tính với ma tuý không có trong danh sách quản lý"],
+    [1,_DV(),v("tong_xn"),v("duong_tinh"),v("dt_ngoai_ds"),v("xlhc_so_vu"),v("xlhc_dt"),v("xlhc_ngoai_ds"),v("hs_so_vu"),v("hs_dt"),v("hs_ngoai_ds")],
+    [],
+    _row(NC,{1:"CÁN BỘ THỐNG KÊ",8:"TRƯỞNG ĐƠN VỊ"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,17,{0:5,1:24}),cap:[0,1],titleRow:3,hdr:[4,5,6],dataFrom:7,dataTo:7,sign:[9],
+    merges:[_m(0,0,0,2),_m(1,0,1,2),_m(3,0,3,NC-1),
+      _m(4,0,6,0),_m(4,1,6,1),_m(4,2,6,2),_m(4,3,4,4),_m(5,3,6,3),_m(5,4,6,4),
+      _m(4,5,4,10),_m(5,5,5,7),_m(5,8,5,10),
+      _m(9,1,9,2),_m(9,8,9,10)],
+  });
+}
+function bs807W_B5(S,rpt){
+  const NC=12,b=(rpt&&rpt.b5)||{},A=S.b5;
+  const g=(k,f)=>pkv(b[k],A[f.split(".")[0]][f.split(".")[1]]);
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),_row(NC,{0:CONFIG.donVi.toUpperCase()}),
+    _row(NC,{0:"THỐNG KÊ VỤ ÁN DO NGƯỜI SỬ DỤNG TRÁI PHÉP MA TÚY, NGƯỜI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI GÂY ÁN\n"+_kyText(S)}),
+    ["STT","Đơn vị","Vụ án hình sự","","","","","","","","",""],
+    ["","","Tội giết người","","Tội cố ý gây thương tích","","Tội cướp, cướp giật","","Trộm cắp tài sản","","Gây rối trật tự công cộng và các tội xâm phạm TTATXH khác",""],
+    ["","","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng"],
+    [1,_DV(),g("gn_vu","gn.vu"),g("gn_dt","gn.dt"),g("cy_vu","cy.vu"),g("cy_dt","cy.dt"),
+      g("cuop_vu","cuop.vu"),g("cuop_dt","cuop.dt"),g("trom_vu","trom.vu"),g("trom_dt","trom.dt"),
+      g("gr_vu","gr.vu"),g("gr_dt","gr.dt")],
+    [],
+    _row(NC,{1:"CÁN BỘ THỐNG KÊ",8:"TRƯỞNG ĐƠN VỊ"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,15,{0:5,1:24}),cap:[0,1],titleRow:2,hdr:[3,4,5],dataFrom:6,dataTo:6,sign:[8],
+    merges:[_m(0,0,0,3),_m(1,0,1,3),_m(2,0,2,NC-1),
+      _m(3,0,5,0),_m(3,1,5,1),_m(3,2,3,11),
+      _m(4,2,4,3),_m(4,4,4,5),_m(4,6,4,7),_m(4,8,4,9),_m(4,10,4,11),
+      _m(8,1,8,2),_m(8,8,8,11)],
+  });
+}
+function bs807W_B6(S,rpt){
+  const NC=4,b=(rpt&&rpt.b6)||{};
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),_row(NC,{0:CONFIG.donVi.toUpperCase()}),[],
+    _row(NC,{0:"KẾT QUẢ XỬ LÝ TỘI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY THEO ĐIỀU 256a\n"+_kyText(S)}),
+    ["STT","Đơn vị","Số vụ","Số đối tượng"],
+    [1,_DV(),pkv(b.so_vu,S.b6.so_vu),pkv(b.so_dt,S.b6.so_dt)],
+    [],
+    _row(NC,{0:"CÁN BỘ THỐNG KÊ",2:"TRƯỞNG ĐƠN VỊ"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,22,{0:6,1:30}),cap:[0,1],titleRow:3,hdr:[4],dataFrom:5,dataTo:5,sign:[7],
+    merges:[_m(0,0,0,2),_m(1,0,1,2),_m(3,0,3,NC-1),_m(7,0,7,1),_m(7,2,7,3)],
+  });
+}
+function bs807W_B7(S,rpt){
+  const NC=7,b=(rpt&&rpt.b7)||{};
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),_row(NC,{0:CONFIG.donVi.toUpperCase()}),[],
+    _row(NC,{0:"THỐNG KÊ NGUỒN TIN DO NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY, NGƯỜI NGHIỆN MA TÚY, NGƯỜI BỊ QUẢN LÝ SAU CAI CUNG CẤP\n"+_kyText(S)}),
+    ["STT","Đơn vị","Số tin","Kết quả xử lý tin","","",""],
+    ["","","","Xác lập chuyên án","Vụ án","Số đối tượng bị bắt giữ phạm tội về ma tuý","Xác định điểm tổ chức, chứa chấp sử dụng trái phép chất ma tuý"],
+    [1,_DV(),numv(b.so_tin),numv(b.chuyen_an),numv(b.vu_an),numv(b.dt_bi_bat),numv(b.xd_diem)],
+    [],
+    _row(NC,{1:"CÁN BỘ THỐNG KÊ",4:"TRƯỞNG ĐƠN VỊ"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,20,{0:5,1:24}),cap:[0,1],titleRow:3,hdr:[4,5],dataFrom:6,dataTo:6,sign:[8],
+    merges:[_m(0,0,0,2),_m(1,0,1,2),_m(3,0,3,NC-1),
+      _m(4,0,5,0),_m(4,1,5,1),_m(4,2,5,2),_m(4,3,4,6),
+      _m(8,1,8,2),_m(8,4,8,6)],
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BÁO CÁO THÁNG 483 THEO TB 807 (khớp file "Biểu mẫu thống kê 483 – Tháng")
+// ══════════════════════════════════════════════════════════════════════════
+function bs807M_B1(S){
+  const NC=14;
+  const kFrom=S.from?fmtDate(S.from):"…",kTo=S.to?fmtDate(S.to):"…";
+  const g3=["Người sử dụng trái phép chất ma tuý","Người nghiện ma tuý","Người bị quản lý sau cai nghiện"];
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ TÌNH HÌNH RÀ SOÁT, PHÁT HIỆN, THANH LOẠI, CHUYỂN DIỆN NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TUÝ, NGƯỜI NGHIỆN MA TUÝ, NGƯỜI BỊ QUẢN LÝ SAU CAI NGHIỆN MA TUÝ"}),
+    ["TT","Đơn vị",`Số liệu quản lý tính từ ${kFrom} đến ${kTo}`,"","",`Phát hiện mới từ ngày ${kFrom} đến ${kTo}`,"","",`Thanh loại, chuyển diện từ ngày ${kFrom} đến ${kTo}`,"","",`Hiện đang quản lý đến ngày ${kTo}`,"",""],
+    ["","",...g3,...g3,...g3,...g3],
+    [1,_DV(),S.sd.dauKy,S.ng.dauKy,S.sc.dauKy,S.sd.psMoi,S.ng.psMoi,S.sc.psMoi,
+      S.sd.tl.tong,S.ng.tl.tong,S.sc.tl.tong,S.sd.hienCon,S.ng.hienCon,S.sc.hienCon],
+    [],
+    _row(NC,{2:"CÁN BỘ THỐNG KÊ",10:"TRƯỞNG CÔNG AN PHƯỜNG"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,17,{0:5,1:24}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),
+      _m(1,2,1,4),_m(1,5,1,7),_m(1,8,1,10),_m(1,11,1,13),
+      _m(5,2,5,4),_m(5,10,5,13)],
+  });
+}
+function bs807M_B2(S){
+  const NC=8;
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ SỐ LIỆU NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TUÝ, NGƯỜI NGHIỆN MA TUÝ, NGƯỜI BỊ QUẢN LÝ SAU CAI NGHIỆN MA TUÝ THEO NƠI Ở\n"+_kyText(S)}),
+    ["TT","Đơn vị","Người sử dụng trái phép chất ma tuý","","Người nghiện ma tuý","","","Người bị quản lý sau cai"],
+    ["","","Ngoài xã hội","Trong trại tạm giam, nhà tạm giữ","Ngoài xã hội","Trong trại tạm giam, nhà tạm giữ","Trong cơ sở cai nghiện",""],
+    [1,_DV(),S.noiO.sd_xh,S.noiO.sd_ttg,S.noiO.ng_xh,S.noiO.ng_ttg,S.noiO.ng_cscn,S.noiO.sc_xh],
+    [],
+    _row(NC,{6:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,20,{0:5,1:26}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,1,3),_m(1,4,1,6),_m(1,7,2,7),_m(5,6,5,7)],
+  });
+}
+function bs807M_B3(S){
+  const NC=12;
+  const sub=["Cấp xã nhập Phần mềm PC06","Cấp xã gửi danh sách về PC04 QUẢN LÝ","Tỉ lệ cập nhật phần mềm (%)"];
+  const lyDo=[...new Set(S.pm.dsChua.map(r=>r.ly_do_chua_cap_nhat_pm).filter(Boolean))].join("; ");
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ SỐ LIỆU NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TUÝ, NGƯỜI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI CẬP NHẬT LÊN PHẦN MỀM QUẢN LÝ ĐỐI TƯỢNG\n"+_kyText(S)}),
+    ["TT","Đơn vị","Người sử dụng trái phép chất ma tuý","","","Người nghiện ma tuý","","","Người bị quản lý sau cai","","","Lý do chưa cập nhật lên phần mềm QLĐT"],
+    ["","",...sub,...sub,...sub,""],
+    [1,_DV(),S.pm.sd.nhap,S.pm.sd.tong,pct(S.pm.sd.nhap,S.pm.sd.tong)+"%",
+      S.pm.ng.nhap,S.pm.ng.tong,pct(S.pm.ng.nhap,S.pm.ng.tong)+"%",
+      S.pm.sc.nhap,S.pm.sc.tong,pct(S.pm.sc.nhap,S.pm.sc.tong)+"%",lyDo],
+    [],
+    _row(NC,{9:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,17,{0:5,1:24,11:30}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,1,4),_m(1,5,1,7),_m(1,8,1,10),_m(1,11,2,11),_m(5,9,5,11)],
+  });
+}
+function bs807M_B3_1(S){
+  const NC=8,list=S.pm.dsChua;
+  const aoa=[
+    _row(NC,{0:"DANH SÁCH NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TUÝ, NGƯỜI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI CHƯA CẬP NHẬT LÊN PHẦN MỀM QUẢN LÝ ĐỐI TƯỢNG\n"+_kyText(S)}),
+    ["TT","Đơn vị","Họ tên đối tượng","Năm sinh","HKTT","Chỗ ở hiện nay","Diện quản lý (người nghiện, người sử dụng, sau cai)","Lý do chưa cập nhật lên phần mềm QLĐT"],
+    ...list.map((r,i)=>[i+1,_DV(),r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",r.noi_o_ht||"",r._dien,r.ly_do_chua_cap_nhat_pm||""]),
+  ];
+  if(!list.length)aoa.push([1,_DV(),"không","","","","",""]);
+  const last=aoa.length-1;
+  aoa.push([],_row(NC,{6:"TRƯỞNG CÔNG AN"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:22,2:24,4:30,5:30,7:30}),titleRow:0,hdr:[1],dataFrom:2,dataTo:last,sign:[last+2],
+    merges:[_m(0,0,0,NC-1),_m(last+2,6,last+2,7)],
+  });
+}
+function bs807M_B4(S,rpt){
+  const NC=9,b=(rpt&&rpt.b4)||{},A=S.b4;
+  const v=(k)=>pkv(b[k],A[k]);
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ SỐ ĐỐI TƯỢNG DƯƠNG TÍNH VỚI CHẤT MA TÚY TRONG CÁC VỤ VI PHẠM PHÁP LUẬT\n"+_kyText(S)}),
+    ["STT","Đơn vị","Hành chính","","","Hình sự, ma tuý","","","Ghi chú"],
+    ["","","Số vụ","Tổng số đối tượng dương tính với ma tuý","Số đối tượng dương tính với ma tuý không có trong danh sách quản lý",
+      "Số vụ","Tổng số đối tượng dương tính với ma tuý","Số đối tượng dương tính với ma tuý không có trong danh sách quản lý",""],
+    [1,_DV(),v("xlhc_so_vu"),v("xlhc_dt"),v("xlhc_ngoai_ds"),v("hs_so_vu"),v("hs_dt"),v("hs_ngoai_ds"),""],
+    [],
+    _row(NC,{7:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,20,{0:5,1:24,8:22}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,1,4),_m(1,5,1,7),_m(1,8,2,8),_m(5,7,5,8)],
+  });
+}
+function bs807M_B4_1(S){
+  const NC=8,list=S.b4.ds;
+  const aoa=[
+    _row(NC,{0:"DANH SÁCH ĐỐI TƯỢNG DƯƠNG TÍNH VỚI CHẤT MA TÚY TRONG CÁC VỤ VI PHẠM PHÁP LUẬT\n"+_kyText(S)}),
+    ["STT","Đơn vị","Họ tên đối tượng","Năm sinh","HKTT","Nơi ở trước khi bị bắt","Kết quả xử lý","Lý do không có trong danh sách quản lý tại địa phương"],
+    ...list.map((r,i)=>[i+1,r.don_vi_ph_hv||_DV(),r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+      r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||r.noi_o_ht||"",
+      (_isKhoiTo(r)?"Khởi tố hình sự":(_isXLHC(r)?("Xử phạt VPHC"+(dv(r,"kq_xlhc_bpxp")?" – "+dv(r,"kq_xlhc_bpxp"):"")):"Đang xử lý")),
+      r.ly_do_khong_trong_ds||""]),
+  ];
+  if(!list.length)aoa.push([1,_DV(),"không","","","","",""]);
+  const last=aoa.length-1;
+  aoa.push([],_row(NC,{6:"TRƯỞNG CÔNG AN"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:22,2:24,4:30,5:30,7:32}),titleRow:0,hdr:[1],dataFrom:2,dataTo:last,sign:[last+2],
+    merges:[_m(0,0,0,NC-1),_m(last+2,6,last+2,7)],
+  });
+}
+function bs807M_B5(S,rpt){
+  const NC=14,b=(rpt&&rpt.b5)||{},A=S.b5;
+  const g=(k,p,f)=>pkv(b[k],A[p][f]);
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ TỔNG SỐ VỤ DO NGƯỜI SỬ DỤNG TRÁI PHÉP MA TÚY, NGƯỜI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI GÂY ÁN\n"+_kyText(S)}),
+    ["STT","Đơn vị","Vụ án ma tuý","","Vụ án hình sự","","","","","","","","",""],
+    ["","","Số vụ","Số đối tượng","Tội giết người","","Tội cố ý gây thương tích","","cướp, cướp giật","","trộm cắp tài sản","","Gây rối trật tự công cộng và các tội xâm phạm TTATXH khác",""],
+    ["","","","","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng","Số vụ","Số đối tượng"],
+    [1,_DV(),g("ma_tuy_vu","ma_tuy","vu"),g("ma_tuy_dt","ma_tuy","dt"),
+      g("gn_vu","gn","vu"),g("gn_dt","gn","dt"),g("cy_vu","cy","vu"),g("cy_dt","cy","dt"),
+      g("cuop_vu","cuop","vu"),g("cuop_dt","cuop","dt"),g("trom_vu","trom","vu"),g("trom_dt","trom","dt"),
+      g("gr_vu","gr","vu"),g("gr_dt","gr","dt")],
+    [],
+    _row(NC,{10:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,15,{0:5,1:24}),titleRow:0,hdr:[1,2,3],dataFrom:4,dataTo:4,sign:[6],
+    merges:[_m(0,0,0,NC-1),_m(1,0,3,0),_m(1,1,3,1),_m(1,2,1,3),_m(1,4,1,13),
+      _m(2,2,3,2),_m(2,3,3,3),_m(2,4,2,5),_m(2,6,2,7),_m(2,8,2,9),_m(2,10,2,11),_m(2,12,2,13),
+      _m(6,10,6,13)],
+  });
+}
+function bs807M_B5_1(S){
+  const NC=8,list=S.b5.ds;
+  const aoa=[
+    _row(NC,{0:"DANH SÁCH NGƯỜI SỬ DỤNG TRÁI PHÉP MA TÚY, NGƯỜI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI GÂY ÁN\n"+_kyText(S)}),
+    ["STT","Đơn vị","Họ tên đối tượng","Năm sinh","HKTT","Nơi ở trước khi bị bắt","Tội danh","Kết quả xử lý"],
+    ...list.map((r,i)=>[i+1,r.don_vi_ph_hv||_DV(),r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+      r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||r.noi_o_ht||"",
+      r.hanh_vi_chinh||r.hanh_vi_khac||"",
+      (_isKhoiTo(r)?"Khởi tố hình sự":(_isXLHC(r)?"Xử phạt VPHC":"Đang xử lý"))]),
+  ];
+  if(!list.length)aoa.push([1,_DV(),"không","","","","",""]);
+  const last=aoa.length-1;
+  aoa.push([],_row(NC,{5:"TRƯỞNG CÔNG AN"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:22,2:24,4:30,5:30,6:26}),titleRow:0,hdr:[1],dataFrom:2,dataTo:last,sign:[last+2],
+    merges:[_m(0,0,0,NC-1),_m(last+2,5,last+2,7)],
+  });
+}
+const _D256=[
+  "Đang trong thời hạn cai nghiện ma túy, hoặc điều trị nghiện các chất ma túy",
+  "Đang trong thời hạn quản lý sau cai nghiện ma túy",
+  "Đang trong thời hạn 02 năm kể từ ngày hết thời hạn quản lý sau cai nghiện ma túy",
+  "Đang trong thời hạn 02 năm kể từ khi tự ý chấm dứt cai nghiện ma túy tự nguyện",
+];
+function bs807M_B6(S,rpt){
+  const NC=10,b=(rpt&&rpt.b6)||{},A=S.b6;
+  const v=k=>pkv(b[k],A[k]);
+  const aoa=[
+    _row(NC,{0:"KẾT QUẢ XỬ LÝ HÌNH SỰ ĐỐI VỚI TỘI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY THEO ĐIỀU 256a BLHS\n"+_kyText(S)}),
+    ["STT","Đơn vị","Số vụ","Số đối tượng","Đối tượng Nam","Đối tượng Nữ","Đối tượng xử lý thuộc diện","","",""],
+    ["","","","","","",..._D256],
+    [1,_DV(),v("so_vu"),v("so_dt"),v("nam"),v("nu"),v("dang_cai"),v("trong_ql_sc"),v("trong_2nam_sc"),v("tu_y_bo_cai")],
+    [],
+    _row(NC,{8:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,20,{0:5,1:24}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,2,2),_m(1,3,2,3),_m(1,4,2,4),_m(1,5,2,5),
+      _m(1,6,1,9),_m(5,8,5,9)],
+  });
+}
+function bs807M_B6_1(S){
+  const NC=10,list=S.b6.ds;
+  const aoa=[
+    _row(NC,{0:"DANH SÁCH KẾT QUẢ XỬ LÝ HÌNH SỰ ĐỐI VỚI TỘI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY THEO ĐIỀU 256a BLHS\n"+_kyText(S)}),
+    ["STT","Đơn vị","Họ tên đối tượng","Năm sinh","HKTT","Nơi ở trước khi bị bắt","Đối tượng xử lý thuộc diện","","",""],
+    ["","","","","","",..._D256],
+    ...list.map((r,i)=>[i+1,r.don_vi_ph_hv||_DV(),r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+      r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||"",
+      boolX(r.d256a_dang_cai),boolX(r.d256a_trong_qlsc),boolX(r.d256a_2nam_het_qlsc),boolX(r.d256a_2nam_tu_y_bo)]),
+  ];
+  if(!list.length)aoa.push([1,_DV(),"không","","","","","","",""]);
+  const last=aoa.length-1;
+  aoa.push([],_row(NC,{8:"TRƯỞNG CÔNG AN"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:22,2:24,4:28,5:28}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:last,sign:[last+2],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,2,2),_m(1,3,2,3),_m(1,4,2,4),_m(1,5,2,5),
+      _m(1,6,1,9),_m(last+2,8,last+2,9)],
+  });
+}
+function bs807M_B7(S,rpt){
+  const NC=8,b=(rpt&&rpt.b7)||{};
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ NGUỒN TIN DO NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY, NGƯỜI ĐANG CAI NGHIỆN, NGƯỜI BỊ QUẢN LÝ SAU CAI CUNG CẤP\n"+_kyText(S)}),
+    ["STT","Đơn vị","Số tin","Kết quả xử lý tin","","","","Ghi chú (tin không có giá trị, tin đang xử lý...)"],
+    ["","","","Xác lập chuyên án","Vụ án","Số đối tượng bị bắt giữ phạm tội về ma tuý","Xác định điểm tổ chức, chứa chấp sử dụng trái phép chất ma tuý",""],
+    [1,_DV(),numv(b.so_tin),numv(b.chuyen_an),numv(b.vu_an),numv(b.dt_bi_bat),numv(b.xd_diem),b.ghi_chu_b7||""],
+    [],
+    _row(NC,{6:"TRƯỞNG CÔNG AN"}),
+  ];
+  return _ws8(aoa,{
+    cols:_cw(NC,20,{0:5,1:24,7:26}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:3,sign:[5],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,2,2),_m(1,3,1,6),_m(1,7,2,7),_m(5,6,5,7)],
+  });
+}
+function bs807M_B8(S,rpt){
+  const NC=9,b=(rpt&&rpt.b8)||{};
+  const cs=n=>[b["cs"+n+"_so_tin"],b["cs"+n+"_chuyen_an"],b["cs"+n+"_vu_an"],b["cs"+n+"_dt_bi_bat"],b["cs"+n+"_xd_diem"]].map(numv);
+  const rows=[1,2,3,4,5,6].map(n=>{
+    const d=cs(n);
+    return[n===1?1:"",n===1?"Hồ Chí Minh":"",`Cơ sở cai nghiện ma tuý số ${n} thành phố Hồ Chí Minh`,...d,""];
+  });
+  const tong=[0,1,2,3,4].map(i=>rows.reduce((s,r)=>s+numv(r[3+i]),0));
+  const aoa=[
+    _row(NC,{0:"THỐNG KÊ TIN DO NGƯỜI NGHIỆN TRONG CƠ SỞ CAI NGHIỆN CUNG CẤP\n"+_kyText(S)}),
+    ["STT","Tỉnh, thành phố","Cơ sơ cai nghiện","Số tin","Kết quả xử lý tin do người nghiện trong CSCN cung cấp","","","","Ghi chú (tin không có giá trị, đang xử lý...)"],
+    ["","","","","Xác lập chuyên án","Vụ án","Số đối tượng bị bắt giữ phạm tội về ma tuý","Xác định điểm tổ chức, chứa chấp sử dụng trái phép chất ma tuý",""],
+    ...rows,
+    ["Tổng cộng","","",...tong,""],
+    [],
+    _row(NC,{7:"TRƯỞNG CÔNG AN"}),
+  ];
+  const last=2+rows.length+1;
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:6,1:18,2:34,8:26}),titleRow:0,hdr:[1,2],dataFrom:3,dataTo:last,sign:[last+2],
+    merges:[_m(0,0,0,NC-1),_m(1,0,2,0),_m(1,1,2,1),_m(1,2,2,2),_m(1,3,2,3),_m(1,4,1,7),_m(1,8,2,8),
+      _m(3,0,8,0),_m(3,1,8,1),_m(last,0,last,2),_m(last+2,7,last+2,8)],
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// HƯỚNG DẪN 26 – BM TỔNG / BM1 / BM2
+// ══════════════════════════════════════════════════════════════════════════
+function bsHD26_TONG(S,rpt){
+  const NC=27,h=(rpt&&rpt.hd26)||{},A=S.hd26;
+  const v=k=>pkv(h[k],A[k]);
+  const lblXL=[
+    "Tổng số vụ việc, vụ án phát hiện, bắt giữ","Tổng số đối tượng xử lý hình sự",
+    "Số đối tượng Tàng trữ trái phép chất ma tuý","Số đối tượng Tổ chức sử dụng trái phép chất ma tuý",
+    "Số đối tượng Chứa chấp sử dụng trái phép chất ma tuý","Số đối tượng sử dụng trái phép chất ma tuý",
+    "Số đối tượng bị khởi tố về tội danh khác (mua bán, vận chuyển…)",
+    "Số đối tượng bị bắt, giữ dương tính với chất ma túy","Số đối tượng xử phạt vi phạm hành chính",
+    "Tổng số đối tượng bị bắt, giữ trong diện quản lý pháp luật",
+    "Tổng số đối tượng bị bắt, giữ trong diện quản lý nghiệp vụ",
+    "Tổng số đối tượng bị bắt, giữ trong diện quản lý giảm cầu",
+  ];
+  const r5=_row(NC,{0:"STT",1:"Địa phương",2:"Tháng trước chuyển qua",4:"Hiện còn",6:"Phát hiện mới",
+    8:"Công tác đấu tranh giải quyết",14:"Điều tra, xử lý\n(Chỉ vụ việc, vụ án có liên quan đến các đối tượng, điểm trong diện quản lý)",26:"Ghi chú"});
+  const r6=_row(NC,{2:"Đối tượng bán",3:"Điểm Tổ chức chứa chấp",4:"Đối tượng bán",5:"Điểm Tổ chức chứa chấp",
+    6:"Đối tượng bán",7:"Điểm Tổ chức chứa chấp",8:"Đối tượng bán",11:"Điểm Tổ chức chứa chấp"});
+  lblXL.forEach((t,i)=>{r6[14+i]=t;});
+  const r7=_row(NC,{1:"Tỉnh",8:"Triệt xóa",9:"Không còn biểu hiện hoạt động",10:"Vô hiệu hóa",
+    11:"Triệt xóa",12:"Không còn biểu hiện hoạt động",13:"Vô hiệu hóa"});
+  const dr=[1,_DV(),v("dt_ban_thang_truoc"),v("diem_tc_thang_truoc"),v("dt_ban_hien_con"),v("diem_tc_hien_con"),
+    v("dt_ban_ps_moi"),v("diem_tc_ps_moi"),v("dt_ban_triet_xoa"),v("dt_ban_khong_bh"),v("dt_ban_vo_hieu"),
+    v("diem_tc_triet_xoa"),v("diem_tc_khong_bh"),v("diem_tc_vo_hieu"),
+    ...["xl_tong_vu","xl_hs_tong_dt","xl_hs_tang_tru","xl_hs_tc_sd","xl_hs_cc_sd","xl_hs_sd","xl_hs_khac",
+      "xl_duong_tinh","xl_xlhc","dt_ql_phap_luat","dt_ql_nvu","dt_ql_giam_cau"].map(v),""];
+  const today=new Date();
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase()}),
+    _row(NC,{0:CONFIG.donVi.toUpperCase()}),
+    _row(NC,{1:"BIỂU TỔNG THỐNG KÊ HƯỚNG DẪN 26"}),
+    _row(NC,{1:_kyText(S)}),
+    [],
+    r5,r6,r7,dr,
+    _row(NC,{20:`${CONFIG.quanHuyen}, ngày ${n2(today.getDate())} tháng ${n2(today.getMonth()+1)} năm ${today.getFullYear()}`}),
+    _row(NC,{2:"LÃNH ĐẠO ĐƠN VỊ",20:"CÁN BỘ THỐNG KÊ"}),
+  ];
+  const merges=[_m(0,0,0,5),_m(1,0,1,5),_m(2,1,2,25),_m(3,1,3,25),
+    _m(5,0,7,0),_m(5,1,6,1),_m(5,2,5,3),_m(5,4,5,5),_m(5,6,5,7),_m(5,8,5,13),_m(5,14,5,25),_m(5,26,7,26),
+    _m(6,8,6,10),_m(6,11,6,13),
+    _m(9,20,9,25),_m(10,2,10,6),_m(10,20,10,25)];
+  for(let c=2;c<=7;c++)merges.push(_m(6,c,7,c));
+  for(let c=14;c<=25;c++)merges.push(_m(6,c,7,c));
+  return _ws8(aoa,{
+    cols:_cw(NC,15,{0:5,1:24,26:20}),cap:[0,1],titleRow:2,subRow:3,hdr:[5,6,7],dataFrom:8,dataTo:8,sign:[10],hdrH:60,merges,
+  });
+}
+function bsHD26_BM1(S){
+  const NC=11;
+  const ban=S.hd26._ban.list,diem=S.hd26._diem.list;
+  const rowOf=(r,i)=>["",i+1,(r.ho_ten_ten_diem||"")+(r.dia_chi?"\n"+r.dia_chi:""),r.don_vi_ql||_DV(),
+    fmtDate(r.thoi_gian_xet_duyet),fmtDate(r.han_dau_tranh),fmtDate(r.gia_han),
+    boolX(r.ql_nv_st),boolX(r.ql_nv_hn),boolX(r.ql_nv_va),r.ghi_chu_hd26||""];
+  const today=new Date();
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase(),5:"CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM"}),
+    _row(NC,{0:CONFIG.donVi.toUpperCase(),5:"Độc lập - Tự do - Hạnh phúc"}),
+    [],
+    _row(NC,{0:"BẢNG THỐNG KÊ"}),
+    _row(NC,{0:"Các diện quản lý, đấu tranh theo Hướng dẫn 26/HD-BCA-C04 ngày 29/4/2025 của Bộ Công an"}),
+    _row(NC,{0:_kyText(S)}),
+    ["STT","Loại hình /địa chỉ, tên đối tượng","","Đơn vị quản lý, theo dõi, giải quyết","Thời gian xét duyệt, hạn giải quyết, gia hạn (ghi rõ ngày/tháng)","","","Quản lý nghiệp vụ","","","Ghi chú\n(ghi rõ Tăng/ Giảm - lý do giảm)"],
+    ["","Loại hình/ STT","Họ tên, địa chỉ của đối tượng","","Xét duyệt","Hạn đấu tranh","Gia hạn","ST","HN","VA",""],
+    _row(NC,{0:"I",1:"Đối tượng mua, bán trái phép chất ma túy"}),
+    ...ban.map(rowOf),
+  ];
+  if(!ban.length)aoa.push(_row(NC,{1:1,2:"không"}));
+  aoa.push(_row(NC,{1:"Tổng số: ",2:ban.length}));
+  aoa.push(_row(NC,{0:"II",1:"Điểm tổ chức sử dụng, chứa chấp việc sử dụng trái phép chất ma túy"}));
+  diem.forEach((r,i)=>aoa.push(rowOf(r,i)));
+  if(!diem.length)aoa.push(_row(NC,{1:1,2:"không"}));
+  aoa.push(_row(NC,{1:"Tổng số: ",2:diem.length}));
+  const last=aoa.length-1;
+  aoa.push([]);
+  aoa.push(_row(NC,{6:`${CONFIG.quanHuyen}, ngày ${n2(today.getDate())} tháng ${n2(today.getMonth()+1)} năm ${today.getFullYear()}`}));
+  aoa.push(_row(NC,{1:"LÃNH ĐẠO ĐƠN VỊ",6:"CÁN BỘ THỐNG KÊ"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,14,{0:5,1:16,2:36,3:24,10:24}),cap:[0,1],titleRow:3,subRow:5,hdr:[6,7],dataFrom:8,dataTo:last,
+    sign:[last+3],
+    merges:[_m(0,0,0,2),_m(0,5,0,10),_m(1,0,1,2),_m(1,5,1,10),
+      _m(3,0,3,10),_m(4,0,4,10),_m(5,0,5,10),
+      _m(6,0,7,0),_m(6,1,6,2),_m(6,3,7,3),_m(6,4,6,6),_m(6,7,6,9),_m(6,10,7,10),
+      _m(last+2,6,last+2,10),_m(last+3,1,last+3,2),_m(last+3,6,last+3,10)],
+  });
+}
+function bsHD26_BM2(S){
+  const NC=30;
+  const list=S.hd26._all;
+  const isBan=r=>/mua|bán/i.test(String(r.loai_hinh_hd26||""));
+  const tuoi=r=>{
+    const d=_pd(r.nam_sinh_hd26);if(!d)return"";
+    const a=new Date().getFullYear()-d.getFullYear();
+    return a<18?"u18":(a<=30?"u30":"o30");
+  };
+  function agg(f){
+    const L=list.filter(f);
+    const hs=L.filter(r=>r.xu_ly_hinh_su),hc=L.filter(r=>r.xu_ly_hanh_chinh);
+    const hv=re=>hs.filter(r=>re.test(String(r.hanh_vi_xl||""))).length;
+    const nv=(l,k)=>l.filter(r=>r[k]).length;
+    const tg=(l,t)=>l.filter(r=>tuoi(r)===t).length;
+    return{
+      tx:L.filter(r=>/triệt xóa/i.test(String(r.kq_giai_quyet||""))).length,
+      vh:L.filter(r=>/vô hiệu/i.test(String(r.kq_giai_quyet||""))).length,
+      tl:L.filter(r=>/không còn|thanh loại/i.test(String(r.kq_giai_quyet||""))).length,
+      hs_vu:_uniq(hs.map(r=>r.so_vu_lq||r.ho_ten_ten_diem)),hs_dt:hs.length,
+      tt:hv(/tàng trữ/i),mb:hv(/mua bán/i),tcsd:hv(/tổ chức/i),ccsd:hv(/chứa chấp/i),
+      khac:hv(/khác|vận chuyển/i),
+      hs_st:nv(hs,"ql_nv_st"),hs_hn:nv(hs,"ql_nv_hn"),hs_va:nv(hs,"ql_nv_va"),
+      hs_u18:tg(hs,"u18"),hs_u30:tg(hs,"u30"),hs_o30:tg(hs,"o30"),
+      hc_vu:_uniq(hc.map(r=>r.so_vu_lq||r.ho_ten_ten_diem)),hc_dt:hc.length,
+      hc_u18:tg(hc,"u18"),hc_u30:tg(hc,"u30"),hc_o30:tg(hc,"o30"),
+      hc_st:nv(hc,"ql_nv_st"),hc_hn:nv(hc,"ql_nv_hn"),hc_va:nv(hc,"ql_nv_va"),
+      dt:L.filter(r=>r.duong_tinh_hd26).length,
+      ta:L.filter(r=>r.tien_an_hd26).length,ts:L.filter(r=>r.tien_su_hd26).length,
+      gc:L.filter(r=>r.dien_giam_cau).length,
+    };
+  }
+  const line=(stt,lbl,a)=>[stt,lbl,a.tx,a.vh,a.tl,a.hs_vu,a.hs_dt,a.tt,a.mb,a.tcsd,a.ccsd,a.khac,
+    a.hs_st,a.hs_hn,a.hs_va,a.hs_u18,a.hs_u30,a.hs_o30,
+    a.hc_vu,a.hc_dt,a.hc_u18,a.hc_u30,a.hc_o30,a.hc_st,a.hc_hn,a.hc_va,
+    a.dt,a.ta,a.ts,a.gc];
+  const today=new Date();
+  const aoa=[
+    _row(NC,{0:CONFIG.capTren.toUpperCase(),11:"CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM"}),
+    _row(NC,{0:CONFIG.donVi.toUpperCase(),11:"Độc lập - Tự do - Hạnh phúc"}),
+    [],
+    _row(NC,{0:"BẢNG THỐNG KÊ"}),
+    _row(NC,{0:"Kết quả đấu tranh, xử lý các diện theo Hướng dẫn 26/HD-BCA-C04 ngày 29/4/2025 của Bộ Công an"}),
+    _row(NC,{0:_kyText(S)}),
+    _row(NC,{0:"STT",1:"Loại hình",2:"TS đã đấu tranh giải quyết",5:"Kết quả đấu tranh"}),
+    _row(NC,{5:"Xử lý hình sự",18:"Xử lý hành chính",26:"Dương tính với ma túy",27:"Tiền án",28:"Tiền sự",29:"Diện quản lý giảm cầu"}),
+    _row(NC,{5:"Số vụ",6:"Số đối tượng",7:"TT",8:"MB",9:"TCSD",10:"CCSD",11:"Khác",12:"QLNV",15:"Tuổi",
+      18:"Số vụ",19:"Số đối tượng",20:"Tuổi",23:"QLNV"}),
+    _row(NC,{2:"Đấu tranh triệt xóa",3:"Vô hiệu hóa",4:"Thanh loại",12:"ST",13:"HN",14:"VA",
+      15:"Dưới 18",16:"18-30",17:"Trên 30",20:"Dưới 18",21:"18-30",22:"Trên 30",23:"ST",24:"HN",25:"VA"}),
+    line(1,"Đối tượng mua, bán trái phép chất ma tuý",agg(isBan)),
+    line(2,"Điểm tổ chức sử dụng, chứa chấp việc sử dụng trái phép chất ma túy",agg(r=>!isBan(r))),
+    [],
+    _row(NC,{18:`${CONFIG.quanHuyen}, ngày ${n2(today.getDate())} tháng ${n2(today.getMonth()+1)} năm ${today.getFullYear()}`}),
+    _row(NC,{1:"LÃNH ĐẠO ĐƠN VỊ",18:"CÁN BỘ THỐNG KÊ"}),
+  ];
+  const merges=[_m(0,0,0,5),_m(0,11,0,29),_m(1,0,1,5),_m(1,11,1,29),
+    _m(3,0,3,25),_m(4,0,4,25),_m(5,0,5,25),
+    _m(6,0,9,0),_m(6,1,9,1),_m(6,2,8,4),_m(6,5,6,29),
+    _m(7,5,7,17),_m(7,18,7,25),_m(7,26,9,26),_m(7,27,9,27),_m(7,28,9,28),_m(7,29,9,29),
+    _m(8,12,8,14),_m(8,15,8,17),_m(8,20,8,22),_m(8,23,8,25),
+    _m(13,18,13,24),_m(14,1,14,6),_m(14,18,14,24)];
+  [5,6,7,8,9,10,11,18,19].forEach(c=>merges.push(_m(8,c,9,c)));
+  return _ws8(aoa,{
+    cols:_cw(NC,11,{0:5,1:30,2:14,3:12,4:12}),cap:[0,1],titleRow:3,subRow:5,hdr:[6,7,8,9],dataFrom:10,dataTo:11,
+    sign:[14],hdrH:40,merges,
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// QĐ 28/2025/QĐ-TTg – DANH SÁCH PHÁT SINH MỚI (khớp file mẫu)
+// ══════════════════════════════════════════════════════════════════════════
+function _qd28Head(NC,title,phuLuc,period,colPL){
+  return[
+    _row(NC,{0:`${CONFIG.capTren.toUpperCase()}\n${CONFIG.donVi.toUpperCase()}`,9:"CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nĐộc lập - Tự do - Hạnh phúc",[colPL]:phuLuc}),
+    _row(NC,{0:title}),
+    _row(NC,{0:period}),
+  ];
+}
+function bsQD28_SD(S,records){
+  const NC=20;
+  const period=S.from&&S.to?`Từ ngày ${fmtDate(S.from)} đến ngày ${fmtDate(S.to)}`:"Toàn bộ thời gian";
+  const h=_row(NC,{0:"STT",1:"Đơn vị",3:"Ngày,\ntháng,\nnăm vào\nsổ",4:"Họ và Tên",5:"Ngày/\ntháng/\nnăm sinh",
+    6:"Giới tính",7:"Nơi đăng ký HKTT",8:"Nơi ở hiện tại",9:"Số CCCD",10:"Trình độ\nhọc vấn",
+    11:"Phiếu kết quả xét nghiệm chất ma túy trong cơ thể\n(Loại ma túy dương tính)",
+    12:"Quyết định quản lý người sử dụng trái phép ma túy",
+    14:"Quyết định XLHC áp dụng biện pháp giáo dục tại xã, phường, thị trấn\n(do có hành vi sử dụng trái phép chất ma túy)",
+    16:"Tình trạng hiện tại",18:"Tình trạng cập nhật lên phần mềm quản lý đối tượng",19:"Thời gian PHÁT SINH MỚI"});
+  const sub=_row(NC,{1:"Phường/xã",2:"TP",12:"Số - ngày/tháng/năm",13:"Thời hạn quản lý",
+    14:"Số-ngày/tháng/năm",15:"Thời hạn quản lý",16:"Có mặt",17:"Vắng mặt\n(ghi rõ lý do vắng mặt)"});
+  const num=Array.from({length:NC},(_,i)=>`(${i+1})`);
+  const aoa=[
+    ..._qd28Head(NC,"DANH SÁCH THỐNG KÊ NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY PHÁT SINH MỚI THEO QUYẾT ĐỊNH 28/2025/QĐ-TTg","Phụ lục 1",period,18),
+    h,sub,num,
+    ...records.map((r,i)=>[i+1,r.phuong_xa||"Tân Bình",r.quan_huyen||CONFIG.quanHuyen,fmtDate(r.ngay_vao_so),
+      r.ho_ten||"",fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",r.trinh_do_hv||"",
+      dv(r,"loai_ma_tuy"),r.qd_ql_so||"",r.qd_ql_tg||"",r.qd_xlhc_so||"",r.qd_xlhc_tg||"",
+      boolX(r.co_mat),r.vang_mat||"",r.cap_nhat_pm||"",fmtDate(r.thoi_gian_ps)]),
+  ];
+  if(!records.length)aoa.push(Array(NC).fill("không"));
+  const last=aoa.length-1;
+  aoa.push([]);
+  aoa.push(_row(NC,{12:`${CONFIG.quanHuyen}, ngày ..... tháng ..... năm .....`}));
+  aoa.push(_row(NC,{0:"CÁN BỘ LẬP DANH SÁCH\n(Ký, ghi rõ họ tên)",12:"THỦ TRƯỞNG ĐƠN VỊ\n(Ký tên, đóng dấu)"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,15,{0:5,4:24,7:28,8:28,11:20}),cap:[0],titleRow:1,subRow:2,hdr:[3,4,5],dataFrom:6,dataTo:last,
+    sign:[last+3],
+    merges:[_m(0,0,0,8),_m(0,9,0,17),_m(0,18,0,19),_m(1,0,1,NC-1),_m(2,0,2,NC-1),
+      _m(3,0,4,0),_m(3,1,3,2),_m(3,3,4,3),_m(3,4,4,4),_m(3,5,4,5),_m(3,6,4,6),_m(3,7,4,7),_m(3,8,4,8),
+      _m(3,9,4,9),_m(3,10,4,10),_m(3,11,4,11),_m(3,12,3,13),_m(3,14,3,15),_m(3,16,3,17),_m(3,18,4,18),_m(3,19,4,19),
+      _m(last+2,12,last+2,19),_m(last+3,0,last+3,5),_m(last+3,12,last+3,19)],
+  });
+}
+function bsQD28_NG(S,records){
+  const NC=18;
+  const period=S.from&&S.to?`Từ ngày ${fmtDate(S.from)} đến ngày ${fmtDate(S.to)}`:"Toàn bộ thời gian";
+  const h=_row(NC,{0:"STT",1:"Đơn vị",3:"Ngày,\ntháng,\nnăm vào\nsổ",4:"Họ và Tên",5:"Ngày/\ntháng/\nnăm sinh",
+    6:"Giới tính",7:"Nơi đăng ký HKTT",8:"Nơi ở hiện tại",9:"Số CCCD",10:"Trình độ\nhọc vấn",
+    11:"Phiếu kết quả xét nghiệm chất ma túy trong cơ thể\n(Loại ma túy dương tính)",
+    12:"Phiếu kết quả xác định tình trạng nghiện ma túy",
+    13:"Hình thức cai nghiện ma túy đang thực hiện tại địa phương",
+    14:"Tình trạng hiện tại",16:"Tình trạng cập nhật phần mềm quản lý đối tượng",17:"Thời gian PHÁT SINH MỚI"});
+  const sub=_row(NC,{1:"Phường/xã",2:"TP",14:"Có mặt",15:"Vắng mặt\n(Ghi rõ lý do vắng mặt)"});
+  const num=Array.from({length:NC},(_,i)=>`(${i+1})`);
+  const aoa=[
+    ..._qd28Head(NC,"DANH SÁCH THỐNG KÊ NGƯỜI NGHIỆN MA TÚY PHÁT SINH MỚI THEO QUYẾT ĐỊNH 28/2025/QĐ-TTg","Phụ lục 2",period,16),
+    h,sub,num,
+    ...records.map((r,i)=>[i+1,r.phuong_xa||"Tân Bình",r.quan_huyen||CONFIG.quanHuyen,fmtDate(r.ngay_vao_so),
+      r.ho_ten||"",fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",r.trinh_do_hv||"",
+      dv(r,"loai_ma_tuy"),r.phieu_xd_nghien||"",dv(r,"hinh_thuc_cai"),
+      boolX(r.co_mat),r.vang_mat||"",r.cap_nhat_pm||"",fmtDate(r.thoi_gian_ps)]),
+  ];
+  if(!records.length)aoa.push(Array(NC).fill("không"));
+  const last=aoa.length-1;
+  aoa.push([]);
+  aoa.push(_row(NC,{13:`${CONFIG.quanHuyen}, ngày ..... tháng ..... năm .....`}));
+  aoa.push(_row(NC,{0:"CÁN BỘ LẬP DANH SÁCH\n(Ký, ghi rõ họ tên)",13:"THỦ TRƯỞNG ĐƠN VỊ\n(Ký tên, đóng dấu)"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,15,{0:5,4:24,7:28,8:28,11:20,13:22}),cap:[0],titleRow:1,subRow:2,hdr:[3,4,5],dataFrom:6,dataTo:last,
+    sign:[last+3],
+    merges:[_m(0,0,0,8),_m(0,9,0,15),_m(0,16,0,17),_m(1,0,1,NC-1),_m(2,0,2,NC-1),
+      _m(3,0,4,0),_m(3,1,3,2),_m(3,3,4,3),_m(3,4,4,4),_m(3,5,4,5),_m(3,6,4,6),_m(3,7,4,7),_m(3,8,4,8),
+      _m(3,9,4,9),_m(3,10,4,10),_m(3,11,4,11),_m(3,12,4,12),_m(3,13,4,13),_m(3,14,3,15),_m(3,16,4,16),_m(3,17,4,17),
+      _m(last+2,13,last+2,17),_m(last+3,0,last+3,5),_m(last+3,13,last+3,17)],
+  });
+}
+function bsQD28_VPPL(S,records){
+  const NC=12;
+  const period=S.from&&S.to?`Từ ngày ${fmtDate(S.from)} đến ngày ${fmtDate(S.to)}`:"Toàn bộ thời gian";
+  const h=["STT","Họ và tên","Năm sinh","HKTT","Chổ ở trước khi bị bắt","Ngày bị bắt","Nội dung sự việc",
+    "Tội danh/ hành vi vi phạm","Kết quả xử lý","Ngày ban hành kết quả xử lý",
+    "Có cư trú trên địa bàn trên 30 ngày (đánh dấu X)","Ghi chú"];
+  const aoa=[
+    _row(NC,{0:`${CONFIG.capTren.toUpperCase()}\n${CONFIG.donVi.toUpperCase()}`,11:"Phụ lục 3"}),
+    _row(NC,{0:"DANH SÁCH\nNgười hiện đang cư trú trên địa bàn vi phạm pháp luật về ma túy phát sinh mới theo Quyết định 28/2025/QĐ-TTg"}),
+    _row(NC,{0:period}),
+    [],h,
+    ...records.map((r,i)=>[i+1,r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+      r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||"",fmtDate(r.kt_ngay_bat||r.ngay_ph_hv),
+      r.trich_yeu||"",r.hanh_vi_chinh||r.hanh_vi_khac||"",
+      (_isKhoiTo(r)?"Khởi tố hình sự":(_isXLHC(r)?("Xử phạt VPHC"+(dv(r,"kq_xlhc_bpxp")?" – "+dv(r,"kq_xlhc_bpxp"):"")):"Đang xử lý")),
+      fmtDate(r.ngay_ban_hanh_kq_xl),boolX(r.cu_tru_30ngay),r.ghi_chu_qd28||""]),
+  ];
+  if(!records.length)aoa.push(Array(NC).fill("không"));
+  const last=aoa.length-1;
+  aoa.push([]);
+  aoa.push(_row(NC,{8:`${CONFIG.quanHuyen}, ngày ..... tháng ..... năm .....`}));
+  aoa.push(_row(NC,{0:"CÁN BỘ LẬP DANH SÁCH",8:"THỦ TRƯỞNG ĐƠN VỊ"}));
+  return _ws8(aoa,{
+    cols:_cw(NC,18,{0:5,1:24,3:28,4:28,6:30,7:26}),cap:[0],titleRow:1,subRow:2,hdr:[4],dataFrom:5,dataTo:last,
+    sign:[last+3],
+    merges:[_m(0,0,0,8),_m(1,0,1,NC-1),_m(2,0,2,NC-1),
+      _m(last+2,8,last+2,11),_m(last+3,0,last+3,5),_m(last+3,8,last+3,11)],
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// XUẤT BÁO CÁO WORD (.doc mở trực tiếp bằng MS Word, khổ A4, Times New Roman 14)
+// ══════════════════════════════════════════════════════════════════════════
+function _wEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function _wDownload(bodyHtml,fileName){
+  const head='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'+
+    '<head><meta charset="utf-8"><title>Bao cao</title>'+
+    '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->'+
+    '<style>@page WordSection1{size:21cm 29.7cm;margin:2cm 2cm 2cm 3cm;} div.WordSection1{page:WordSection1;}'+
+    'body,p,td,div{font-family:"Times New Roman",serif;font-size:14.0pt;line-height:1.4;}'+
+    'p{margin:0 0 6.0pt 0;text-align:justify;text-indent:0;}'+
+    '.c{text-align:center;} .b{font-weight:bold;} .i{font-style:italic;} .ind{text-indent:1.0cm;}'+
+    'table{border-collapse:collapse;} td{vertical-align:top;padding:0 4pt;}'+
+    '</style></head><body><div class="WordSection1">';
+  const blob=new Blob(["\ufeff",head,bodyHtml,"</div></body></html>"],{type:"application/msword;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=fileName;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+function _wHeader(soBC){
+  const d=new Date();
+  return'<table style="width:100%"><tr>'+
+    '<td style="width:45%;text-align:center"><p class="b" style="font-size:13pt;margin:0">'+_wEsc(CONFIG.capTren.toUpperCase())+'</p>'+
+    '<p class="b" style="font-size:13pt;margin:0">'+_wEsc(CONFIG.donVi.toUpperCase())+'</p>'+
+    '<p style="margin:0">______________</p>'+
+    '<p style="margin:0;font-size:13pt">Số: ………… /BC-…………</p></td>'+
+    '<td style="width:55%;text-align:center"><p class="b" style="font-size:13pt;margin:0">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>'+
+    '<p class="b" style="margin:0">Độc lập – Tự do – Hạnh phúc</p>'+
+    '<p style="margin:0">_______________________</p>'+
+    '<p class="i" style="margin:0;font-size:13pt">'+_wEsc(CONFIG.quanHuyen)+', ngày '+n2(d.getDate())+' tháng '+n2(d.getMonth()+1)+' năm '+d.getFullYear()+'</p></td>'+
+    '</tr></table><p>&nbsp;</p>';
+}
+function _wFooter(chucDanh){
+  return'<p>&nbsp;</p><table style="width:100%"><tr>'+
+    '<td style="width:50%"><p class="b i" style="margin:0;font-size:12pt">Nơi nhận:</p>'+
+    '<p style="margin:0;font-size:12pt">- Phòng PV01, PC04 (để báo cáo);</p>'+
+    '<p style="margin:0;font-size:12pt">- Lưu: VT, CAP-PCTP.</p></td>'+
+    '<td style="width:50%;text-align:center"><p class="b" style="margin:0">'+_wEsc(chucDanh)+'</p></td>'+
+    '</tr></table>';
+}
+const _p=(t,cls)=>'<p'+(cls?' class="'+cls+'"':'')+'>'+t+'</p>';
+
+// ── Báo cáo Hướng dẫn 26 ─────────────────────────────────────────────────
+function exportWordHD26(data,dr,toast){
+  try{
+    const S=computeStats(data,dr);
+    const H=S.hd26;
+    const rpt=data||{};
+    const h=rpt.hd26||{};
+    const v=k=>n2(pkv(h[k],H[k]));
+    const d=new Date();
+    const thang=S.to?(_pd(S.to).getMonth()+1):(d.getMonth()+1);
+    const nam=S.to?_pd(S.to).getFullYear():d.getFullYear();
+    const nvST=S.tb136.bp_suu_tra,nvHN=S.tb136.bp_hiem_nghi,nvCA=S.tb136.bp_chuyen_an;
+    const giamCau=S.sd.thucTe+S.ng.thucTe+S.sc.thucTe;
+    let b=_wHeader();
+    b+=_p('<span class="b" style="font-size:15pt">BÁO CÁO</span>','c');
+    b+=_p('<span class="b">Tình hình, kết quả công tác rà soát, đấu tranh, giải quyết đối tượng mua bán, điểm tổ chức chứa chấp sử dụng trái phép chất ma túy trên địa bàn '+_wEsc(CONFIG.donVi.replace(/^Công an /i,"").toUpperCase())+' tháng '+n2(thang)+'/'+nam+'</span>','c');
+    b+=_p('<span class="i">'+_wEsc(_kyText(S))+'</span>','c');
+    b+=_p('_______________','c');
+    b+=_p('Thực hiện Hướng dẫn số 26/HD-BCA-C04 ngày 29/4/2025 của Bộ Công an về công tác rà soát, phát hiện, quản lý, xử lý người sử dụng trái phép chất ma túy, người nghiện ma túy, người bị quản lý sau cai, đối tượng mua, bán trái phép chất ma túy và điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy (sau đây gọi là Hướng dẫn số 26); Kế hoạch số 218/KH-CATP-PC04 ngày 16/7/2025 về triển khai thực hiện Hướng dẫn 26, đơn vị '+_wEsc(CONFIG.donVi)+', '+_wEsc(CONFIG.capTren)+' báo cáo kết quả như sau:','ind');
+    b+=_p('<span class="b">I. Tình hình triển khai thực hiện Hướng dẫn số 26</span>');
+    b+=_p('<span class="b">1. Công tác tham mưu chỉ đạo</span>');
+    b+=_p(_wEsc(CONFIG.donVi)+' đã tổ chức cho CBCS thực hiện rà soát, cập nhật, quản lý danh sách các băng nhóm, đối tượng, điểm, tụ điểm phức tạp về ma túy trên địa bàn, kết quả được báo cáo trong cuộc họp giao ban và thực hiện họp đánh giá các loại đối tượng, phương hướng, biện pháp xử lý khi đưa vào danh sách thống kê.','ind');
+    b+=_p('<span class="b">2. Tình hình đối tượng mua, bán trái phép chất ma túy và điểm tổ chức chứa chấp sử dụng trái phép chất ma túy trên địa bàn</span>');
+    b+=_p('- Tình hình nổi bật: '+(H.dt_ban_ps_moi||H.diem_tc_ps_moi?('phát sinh mới '+n2(H.dt_ban_ps_moi)+' đối tượng mua bán, '+n2(H.diem_tc_ps_moi)+' điểm tổ chức, chứa chấp.'):'không.'),'ind');
+    b+=_p('- Địa bàn '+(H.dt_ban_hien_con+H.diem_tc_hien_con>0?'cần tiếp tục theo dõi':'không phức tạp')+'.','ind');
+    b+=_p('- Các vấn đề cần chú ý trong công tác rà soát, đấu tranh, giải quyết đối tượng mua, bán trái phép chất ma túy và điểm tổ chức chứa chấp sử dụng trái phép chất ma túy: tiếp tục quản lý chặt '+n2(H.dt_ban_hien_con)+' đối tượng và '+n2(H.diem_tc_hien_con)+' điểm hiện còn trong diện.','ind');
+    b+=_p('<span class="b">II. Kết quả thực hiện</span>');
+    b+=_p('<span class="b">1. Công tác rà soát, thống kê</span>');
+    b+=_p('<span class="b">1.1. Đối tượng mua, bán</span>');
+    b+=_p('- Số kỳ trước chuyển qua: '+v("dt_ban_thang_truoc")+' đối tượng.','ind');
+    b+=_p('- Số mới phát sinh: '+v("dt_ban_ps_moi")+' đối tượng.','ind');
+    b+=_p('- Số hiện còn: '+v("dt_ban_hien_con")+' đối tượng.','ind');
+    b+=_p('- Số đã đấu tranh, giải quyết, loại ra khỏi danh sách: '+n2(H._ban.gqTong)+' đối tượng.','ind');
+    b+=_p('+ Triệt xoá: '+v("dt_ban_triet_xoa")+' đối tượng.','ind');
+    b+=_p('+ Vô hiệu hoá: '+v("dt_ban_vo_hieu")+' đối tượng.','ind');
+    b+=_p('+ Tự thanh loại (không còn biểu hiện hoạt động, đối tượng chết, bỏ đi nơi khác…): '+v("dt_ban_khong_bh")+' đối tượng.','ind');
+    b+=_p('- Số đối tượng thuộc diện quản lý pháp luật quản lý giảm cầu (người chấp hành xong án phạt tù, người được đặc xá, người nghiện, người sử dụng và người bị quản lý sau cai…): '+n2(giamCau)+' đối tượng.','ind');
+    b+=_p('+ Số đối tượng dương tính với ma túy: '+n2(S.b4.duong_tinh)+' đối tượng.','ind');
+    b+=_p('- Số đối tượng quản lý theo nghiệp vụ: '+n2(nvST+nvHN+nvCA)+' đối tượng (sưu tra: '+n2(nvST)+' đối tượng; hiềm nghi: '+n2(nvHN)+' đối tượng; chuyên án: '+n2(nvCA)+' đối tượng).','ind');
+    b+=_p('<span class="b">1.2. Điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy</span>');
+    b+=_p('- Số kỳ trước chuyển qua: '+v("diem_tc_thang_truoc")+' điểm.','ind');
+    b+=_p('- Số mới phát sinh: '+v("diem_tc_ps_moi")+' điểm.','ind');
+    b+=_p('- Số hiện còn: '+v("diem_tc_hien_con")+' điểm.','ind');
+    b+=_p('- Số đã đấu tranh, giải quyết, loại ra khỏi danh sách: '+n2(H._diem.gqTong)+' điểm.','ind');
+    b+=_p('+ Triệt xoá: '+v("diem_tc_triet_xoa")+' điểm.','ind');
+    b+=_p('+ Vô hiệu hoá: '+v("diem_tc_vo_hieu")+' điểm.','ind');
+    b+=_p('+ Tự thanh loại (không còn biểu hiện hoạt động, đối tượng chết, bỏ đi nơi khác…): '+v("diem_tc_khong_bh")+' điểm.','ind');
+    b+=_p('<span class="b">2. Kết quả đấu tranh, xử lý</span>');
+    b+=_p('<span class="b">2.1. Đối tượng mua, bán</span>');
+    b+=_p('- Tổng số vụ việc, vụ án: '+v("xl_tong_vu")+' vụ.','ind');
+    b+=_p('- Tổng số đối tượng bị xử lý hình sự: '+v("xl_hs_tong_dt")+' đối tượng.','ind');
+    b+=_p('+ Tàng trữ trái phép chất ma túy: '+v("xl_hs_tang_tru")+' đối tượng.','ind');
+    b+=_p('+ Tổ chức sử dụng trái phép chất ma túy: '+v("xl_hs_tc_sd")+' đối tượng.','ind');
+    b+=_p('+ Chứa chấp việc sử dụng trái phép chất ma túy: '+v("xl_hs_cc_sd")+' đối tượng.','ind');
+    b+=_p('+ Sử dụng trái phép chất ma túy: '+v("xl_hs_sd")+' đối tượng.','ind');
+    b+=_p('+ Khác (mua bán, vận chuyển…): '+v("xl_hs_khac")+' đối tượng.','ind');
+    b+=_p('- Tổng số đối tượng bị xử phạt vi phạm hành chính: '+v("xl_xlhc")+' đối tượng.','ind');
+    b+=_p('- Số đối tượng thuộc diện quản lý pháp luật quản lý giảm cầu: '+n2(giamCau)+' đối tượng.','ind');
+    b+=_p('+ Số đối tượng dương tính với ma túy: '+v("xl_duong_tinh")+' đối tượng.','ind');
+    b+=_p('- Số đối tượng quản lý theo nghiệp vụ: '+n2(nvST+nvHN+nvCA)+' đối tượng (sưu tra: '+n2(nvST)+'; hiềm nghi: '+n2(nvHN)+'; chuyên án: '+n2(nvCA)+').','ind');
+    b+=_p('<span class="b">2.2. Điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy</span>');
+    b+=_p('- Tổng số vụ việc, vụ án: '+n2(H._diem.gqTong)+' vụ.','ind');
+    b+=_p('- Tổng số đối tượng bị xử phạt vi phạm hành chính: '+v("xl_xlhc")+' đối tượng.','ind');
+    b+=_p('- Tổng số đối tượng bị xử lý hình sự: '+v("xl_hs_tong_dt")+' đối tượng.','ind');
+    b+=_p('<span class="b">III. Nhận xét và đánh giá</span>');
+    b+=_p('+ Ưu điểm: Tất cả CBCS '+_wEsc(CONFIG.donVi)+' phát huy cao độ tinh thần trách nhiệm, tâm huyết, quyết liệt trong cao điểm tấn công tội phạm đảm bảo giữ vững ổn định tình hình ANTT, không để bị động, bất ngờ trong mọi tình huống, không để phát sinh địa bàn, điểm, tụ điểm phức tạp về tệ nạn ma túy. Được sự quan tâm và đồng thuận của Đảng ủy, UBND Phường trong công tác phát động phong trào toàn dân tham gia bảo vệ an ninh Tổ quốc.','ind');
+    b+=_p('+ Hạn chế: ……………………………………………………………','ind');
+    b+=_p('+ Nguyên nhân tồn tại, hạn chế: ……………………………………','ind');
+    b+=_p('+ Đề xuất giải pháp khắc phục: ……………………………………','ind');
+    b+=_p('- Nhận xét xu hướng hoạt động của đối tượng mua bán, điểm tổ chức chứa chấp sử dụng trái phép chất ma túy tại địa phương: các đối tượng nghi vấn mua bán trái phép chất ma túy đang quản lý trên địa bàn chấp hành tốt quy định pháp luật.','ind');
+    b+=_p('<span class="b">IV. Phương hướng nhiệm vụ thời gian tới</span>');
+    b+=_p('Tiếp tục thực hiện theo Hướng dẫn 26/HD-BCA-C04 ngày 29/4/2025 của Bộ Công an để đảm bảo tình hình an ninh trật tự tại địa phương, đồng thời phát hiện, xử lý kịp thời các đối tượng có biểu hiện nghi vấn theo Thông báo 136 và Hướng dẫn 26.','ind');
+    b+=_p('- Tiếp tục rà soát phát hiện người sử dụng trái phép chất ma túy ở từng khu phố để lập danh sách quản lý, không để sót lọt; kiên quyết xử lý các trường hợp vi phạm để chặn đứng sự gia tăng, phát sinh mới người sử dụng trái phép chất ma túy.','ind');
+    b+=_p('- Lập chốt kiểm tra công khai; kiểm tra định kỳ, đột xuất các địa điểm, khu vực nghi vấn tiềm ẩn nguy cơ diễn ra hành vi sử dụng trái phép chất ma túy để phát hiện, đưa vào quản lý theo quy định.','ind');
+    b+=_p('- Tiếp tục thực hiện dữ liệu số; cập nhật, khai thác dữ liệu người sử dụng trái phép chất ma túy, người nghiện ma túy, người bị quản lý sau cai nghiện ma túy tại phần mềm quản lý đối tượng (hiện đã cập nhật: người sử dụng '+n2(S.pm.sd.nhap)+'/'+n2(S.pm.sd.tong)+', người nghiện '+n2(S.pm.ng.nhap)+'/'+n2(S.pm.ng.tong)+', sau cai '+n2(S.pm.sc.nhap)+'/'+n2(S.pm.sc.tong)+').','ind');
+    b+=_p('- Tên, số điện thoại cán bộ phụ trách báo cáo: …………………………','ind');
+    b+=_p('Trên đây là báo cáo kết quả thực hiện Hướng dẫn 26 tháng '+n2(thang)+'/'+nam+' của '+_wEsc(CONFIG.donVi)+', '+_wEsc(CONFIG.capTren)+'./.','ind');
+    b+=_wFooter("TRƯỞNG ĐƠN VỊ");
+    _wDownload(b,`BC_HD26_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.doc`);
+    if(toast)toast("✅ Đã xuất báo cáo Word theo Hướng dẫn 26","success");
+  }catch(e){if(toast)toast("❌ Lỗi xuất Word HD26: "+e.message,"error");else console.error(e);}
+}
+
+// ── Báo cáo Thông báo 136 ────────────────────────────────────────────────
+function exportWordTB136(data,dr,toast){
+  try{
+    const S=computeStats(data,dr);
+    const T=S.tb136,P2=S.pl2,P3=S.pl3;
+    const rpt=data||{};
+    const t=rpt.tb136||{},p2=rpt.pl2_tb136||{},p3=rpt.pl3_tb136||{};
+    const v=(m,a)=>n2(pkv(m,a));
+    const d=new Date();
+    const thang=S.to?(_pd(S.to).getMonth()+1):(d.getMonth()+1);
+    const nam=S.to?_pd(S.to).getFullYear():d.getFullYear();
+    const hienQL=pkv(t.so_dau_ky,T.so_dau_ky)+pkv(t.ps_moi,T.ps_moi)-pkv(t.tl_tong,T.tl_tong);
+    const bnHien=pkv(p2.bn_dau_ky,P2.bn_dau_ky)+pkv(p2.bn_ps_moi,P2.bn_ps_moi)-pkv(p2.bn_tl_tong,P2.bn_tl_tong);
+    let b=_wHeader();
+    b+=_p('<span class="b" style="font-size:15pt">BÁO CÁO</span>','c');
+    b+=_p('<span class="b">Kết quả rà soát lập danh sách băng nhóm, đối tượng trong diện quản lý liên quan đến ma túy; các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy trên địa bàn '+_wEsc(CONFIG.donVi.replace(/^Công an /i,""))+' tháng '+n2(thang)+'/'+nam+'</span>','c');
+    b+=_p('<span class="i">'+_wEsc(_kyText(S))+'</span>','c');
+    b+=_p('_______________','c');
+    b+=_p('Thực hiện Thông báo số 136/TB-CATP ngày 10/7/2025 của Công an Thành phố về việc phân công, phân cấp và tổ chức thực hiện công tác rà soát, lập danh sách các băng nhóm, đối tượng nghi vấn hoạt động phạm tội; các điểm, tụ điểm phức tạp về hình sự, ma túy, kinh tế, môi trường trên địa bàn Thành phố, '+_wEsc(CONFIG.donVi)+' báo cáo kết quả rà soát như sau:','ind');
+    b+=_p('<span class="b">I. CÔNG TÁC THAM MƯU, TRIỂN KHAI</span>');
+    b+=_p('- '+_wEsc(CONFIG.donVi)+' đã xây dựng kế hoạch và triển khai thực hiện theo Thông báo số 136/TB-CATP ngày 10/7/2025 của Công an Thành phố.','ind');
+    b+=_p('- Tổ chức cho CBCS thực hiện rà soát, cập nhật, quản lý danh sách các băng nhóm, đối tượng, điểm, tụ điểm phức tạp về ma túy trên địa bàn; kết quả được báo cáo trong cuộc họp giao ban và thực hiện họp đánh giá các loại đối tượng, phương hướng, biện pháp xử lý khi đưa vào danh sách thống kê.','ind');
+    b+=_p('<span class="b">II. KẾT QUẢ THỰC HIỆN</span>');
+    b+=_p('<span class="b">1. Kết quả công tác rà soát, lên danh sách, đấu tranh, xử lý các đối tượng nghi vấn hoạt động phạm tội</span>');
+    b+=_p('1.1. Qua rà soát, '+_wEsc(CONFIG.donVi)+' đã lên danh sách '+v(t.ps_moi,T.ps_moi)+' đối tượng; tổng số đối tượng thuộc diện quản lý là '+n2(hienQL)+' (đầu kỳ chuyển sang '+v(t.so_dau_ky,T.so_dau_ky)+' đối tượng). Qua đấu tranh, xử lý đã:','ind');
+    b+=_p('- Khởi tố '+v(t.tl_khoi_to,T.tl_khoi_to)+' bị can.','ind');
+    b+=_p('- Xử lý hành chính đối với '+v(t.tl_xlhc,T.tl_xlhc)+' đối tượng.','ind');
+    b+=_p('- Đưa đi cai nghiện bắt buộc, cơ sở giáo dục, trường giáo dưỡng '+v(t.tl_cai_bb,T.tl_cai_bb)+' đối tượng.','ind');
+    b+=_p('- '+v(t.tl_bo_di,T.tl_bo_di)+' đối tượng bỏ đi khỏi nơi cư trú.','ind');
+    b+=_p('- '+v(t.tl_tien_bo,T.tl_tien_bo)+' đối tượng tiến bộ hoặc chết.','ind');
+    b+=_p('- '+v(t.tl_khac,T.tl_khac)+' đối tượng xử lý khác.','ind');
+    b+=_p('Hiện đang tiếp tục quản lý, xác minh, đấu tranh với '+n2(hienQL)+' đối tượng.','ind');
+    b+=_p('1.2. Phân tích đối tượng đang quản lý:','ind');
+    b+=_p('- Địa bàn hoạt động: trong địa bàn cấp xã '+v(t.db_trong_xa,T.db_trong_xa)+' đối tượng; liên địa bàn cấp xã '+v(t.db_lien_xa,T.db_lien_xa)+' đối tượng; liên tỉnh '+v(t.db_lien_tinh,T.db_lien_tinh)+' đối tượng.','ind');
+    b+=_p('- Cấp quản lý: Công an cấp xã quản lý '+n2(hienQL)+' đối tượng.','ind');
+    b+=_p('- Biện pháp quản lý, đấu tranh: đưa vào sưu tra '+v(t.bp_suu_tra,T.bp_suu_tra)+' đối tượng; hiềm nghi '+n2(T.bp_hiem_nghi)+' đối tượng; chuyên án '+n2(T.bp_chuyen_an)+' đối tượng; quản lý theo pháp luật '+v(t.bp_theo_pl,T.bp_theo_pl)+' đối tượng; đưa vào danh sách theo dõi '+n2(hienQL)+' đối tượng.','ind');
+    b+=_p('<span class="b">2. Kết quả công tác rà soát, lên danh sách, đấu tranh, xử lý các băng nhóm nghi vấn hoạt động phạm tội</span>');
+    b+=_p('2.1. Qua rà soát, '+_wEsc(CONFIG.donVi)+' đã lên danh sách '+v(p2.bn_ps_moi,P2.bn_ps_moi)+' băng nhóm; nâng tổng số băng nhóm thuộc diện quản lý lên '+n2(bnHien)+' (đầu kỳ chuyển sang '+v(p2.bn_dau_ky,P2.bn_dau_ky)+' băng nhóm). Qua đấu tranh, xử lý đã:','ind');
+    b+=_p('- Khởi tố: '+v(p2.bn_tl_khoi_to,P2.bn_tl_khoi_to)+' vụ.','ind');
+    b+=_p('- Tan rã: '+v(p2.bn_tl_tan_ra,P2.bn_tl_tan_ra)+' băng nhóm.','ind');
+    b+=_p('- Xử lý khác (chuyển đi nơi khác; không còn đủ tiêu chí băng nhóm): '+v(p2.bn_tl_khac,P2.bn_tl_khac)+' băng nhóm.','ind');
+    b+=_p('Hiện đang quản lý, xác minh, đấu tranh với '+n2(bnHien)+' băng nhóm.','ind');
+    b+=_p('2.2. Phân tích '+n2(bnHien)+' băng nhóm đang quản lý:','ind');
+    b+=_p('- Địa bàn hoạt động: trong địa bàn cấp xã '+v(p2.bn_db_trong_xa,P2.bn_db_trong_xa)+' băng nhóm; liên địa bàn cấp xã '+v(p2.bn_db_lien_xa,P2.bn_db_lien_xa)+' băng nhóm; liên tỉnh '+v(p2.bn_db_lien_tinh,P2.bn_db_lien_tinh)+' băng nhóm.','ind');
+    b+=_p('- Biện pháp nghiệp vụ đang tiến hành: xác lập chuyên án đấu tranh '+v(p2.bn_ds_xlap_ca,P2.bn_ds_xlap_ca)+' băng nhóm; xác lập hiềm nghi xác minh '+v(p2.bn_ds_xac_lap_hn,P2.bn_ds_xac_lap_hn)+' băng nhóm; lập kế hoạch đấu tranh '+v(p2.bn_ds_lap_kh,P2.bn_ds_lap_kh)+' băng nhóm và xử lý khác '+v(p2.bn_ds_khac,P2.bn_ds_khac)+' băng nhóm.','ind');
+    b+=_p('<span class="b">3. Kết quả công tác rà soát, lên danh sách, đấu tranh, xử lý các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy</span>');
+    b+=_p('3.1. Qua rà soát, '+_wEsc(CONFIG.donVi)+' đã lên danh sách '+v(p3.diem_ps_moi,P3.diem_ps_moi)+' điểm; nâng tổng số điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy thuộc diện quản lý lên '+n2(pkv(p3.diem_dau_ky,P3.diem_dau_ky)+pkv(p3.diem_ps_moi,P3.diem_ps_moi)-pkv(p3.diem_tl_tong,P3.diem_tl_tong))+' (đầu kỳ chuyển sang '+v(p3.diem_dau_ky,P3.diem_dau_ky)+' điểm). Qua đấu tranh, xử lý đã:','ind');
+    b+=_p('- Khởi tố: '+v(p3.diem_tl_khoi_to,P3.diem_tl_khoi_to)+' vụ.','ind');
+    b+=_p('- Xử phạt hành chính: '+v(p3.diem_tl_xlhc,P3.diem_tl_xlhc)+' điểm.','ind');
+    b+=_p('- Dừng hoạt động: '+v(p3.diem_tl_dung,P3.diem_tl_dung)+' điểm.','ind');
+    b+=_p('- Xử lý khác: '+v(p3.diem_tl_khac,P3.diem_tl_khac)+' trường hợp.','ind');
+    b+=_p('Hiện đang quản lý, xác minh, đấu tranh '+v(p3.diem_ql_to_chuc,P3.diem_ql_to_chuc)+' điểm tổ chức sử dụng trái phép chất ma túy, '+v(p3.diem_ql_chua_chap,P3.diem_ql_chua_chap)+' điểm chứa chấp sử dụng trái phép chất ma túy.','ind');
+    b+=_p('3.2. Biện pháp nghiệp vụ đang tiến hành: lập kế hoạch đấu tranh '+n2(P3.diem_ds_kh)+' điểm; kiểm tra xử lý '+n2(P3.diem_ds_ktxl)+' điểm; tiếp tục theo dõi, xác minh '+n2(P3.diem_ds_theo_doi)+' điểm; xử lý khác '+n2(P3.diem_ds_khac)+' điểm.','ind');
+    b+=_p('<span class="b">III. NHẬN XÉT, ĐÁNH GIÁ</span>');
+    b+=_p('<span class="b">1. Ưu điểm</span>');
+    b+=_p('CBCS '+_wEsc(CONFIG.donVi)+' luôn phát huy tinh thần trách nhiệm, tâm huyết, quyết liệt trong cao điểm tấn công tội phạm, đảm bảo giữ vững ổn định tình hình ANTT, không để bị động, bất ngờ trong mọi tình huống, không để phát sinh địa bàn, điểm, tụ điểm phức tạp về tệ nạn ma túy.','ind');
+    b+=_p('<span class="b">2. Tồn tại, hạn chế; khó khăn, vướng mắc:</span> ……………………………','ind');
+    b+=_p('<span class="b">3. Kiến nghị, đề xuất:</span> ………………………………………………','ind');
+    b+=_p('Trên đây là báo cáo kết quả thực hiện Thông báo 136/TB-CATP '+_wEsc(_kyText(S).replace(/[()]/g,""))+' của '+_wEsc(CONFIG.donVi)+'./.','ind');
+    b+=_wFooter("TRƯỞNG CÔNG AN PHƯỜNG");
+    _wDownload(b,`BC_TB136_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.doc`);
+    if(toast)toast("✅ Đã xuất báo cáo Word theo Thông báo 136","success");
+  }catch(e){if(toast)toast("❌ Lỗi xuất Word TB136: "+e.message,"error");else console.error(e);}
+}
+
+// ── Bộ xuất Excel theo từng biểu mẫu chuẩn ───────────────────────────────
+function exportBC807Tuan(data,dr,toast){
+  try{
+    const S=computeStats(data,dr),wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,bs807W_B2(S),"B2");
+    XLSX.utils.book_append_sheet(wb,bs807W_B4(S,data),"B4");
+    XLSX.utils.book_append_sheet(wb,bs807W_B5(S,data),"B5");
+    XLSX.utils.book_append_sheet(wb,bs807W_B6(S,data),"B6");
+    XLSX.utils.book_append_sheet(wb,bs807W_B7(S,data),"B7");
+    XLSX.writeFile(wb,`BC_TUAN_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    _warnStats(S,toast);
+  }catch(e){if(toast)toast("❌ Lỗi xuất BC tuần: "+e.message,"error");else console.error(e);}
+}
+function exportBC483Thang(data,dr,toast){
+  try{
+    const S=computeStats(data,dr),wb=XLSX.utils.book_new();
+    const A=(ws,n)=>XLSX.utils.book_append_sheet(wb,ws,n);
+    A(bs807M_B1(S),"B1");A(bs807M_B2(S),"B2");A(bs807M_B3(S),"B3");A(bs807M_B3_1(S),"B3-1");
+    A(bs807M_B4(S,data),"B4");A(bs807M_B4_1(S),"B4 -1");A(bs807M_B5(S,data),"B5");A(bs807M_B5_1(S),"B5-1");
+    A(bs807M_B6(S,data),"B6");A(bs807M_B6_1(S),"B6-1");A(bs807M_B7(S,data),"B7");A(bs807M_B8(S,data),"B8");
+    XLSX.writeFile(wb,`BC_THANG_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    _warnStats(S,toast);
+  }catch(e){if(toast)toast("❌ Lỗi xuất BC tháng: "+e.message,"error");else console.error(e);}
+}
+function _warnStats(S,toast){
+  const w=validateStats(S);
+  if(!toast)return;
+  if(w.length)toast("⚠️ Đã xuất file. Có "+w.length+" cảnh báo logic số liệu – mở mục 🧮 Kiểm tra logic để xem chi tiết.","error");
+  else toast("✅ Đã xuất file. Số liệu kiểm tra logic hợp lệ.","success");
+}
+
 function doExport(type,data,dr){
   const wb=XLSX.utils.book_new();
   const period=dr.from&&dr.to?`Từ ngày ${fmtDate(dr.from)} đến ngày ${fmtDate(dr.to)}`:"Toàn bộ thời gian";
@@ -3371,17 +5219,7 @@ function doExport(type,data,dr){
 
   // ── PL1 Sử dụng TPCMT ──
   if(["all","all_dt","ds_sd"].includes(type)){
-    const h=["STT","Phường/xã","Quận/huyện","Ngày vào sổ","Họ và Tên","Ngày sinh","GT",
-      "HKTT","Nơi ở HT","CCCD","Trình độ HV","Nghề nghiệp","Loại MT","Số lần XLHC",
-      "Hành vi","Tiền án","Tiền sự","Tình trạng","Ghi chú"];
-    const rows=sd.map((r,i)=>[
-      i+1,r.phuong_xa||"",r.quan_huyen||"",fmtDate(r.ngay_vao_so),r.ho_ten||"",
-      fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
-      r.trinh_do_hv||"",dv(r,"nghe_nghiep"),dv(r,"loai_ma_tuy_dt"),r.so_lan_xlhc||"",
-      r.hanh_vi_nv||"",r.tien_an?"Có":"",r.tien_su?"Có":"",r.tinh_trang||"",r.ghi_chu||""
-    ]);
-    const cw=h.map((_,i)=>({wch:i===0?4:i===4||i===7||i===8?26:i===14||i===12?22:16}));
-    add(makeWs("DANH SÁCH THỐNG KÊ NGƯỜI SỬ DỤNG TRÁI PHÉP CHẤT MA TÚY","Phụ lục 1",h,rows,cw),"PL1-SD TPCMT");
+    add(buildSheetPL1_SuDung(period,sd),"PL1-Sử dụng");
     const sdL=data.su_dung.filter(r=>r.da_loai);
     if(sdL.length>0)add(buildSheet("DS SD TPCMT ĐÃ LOẠI",period,
       ["STT","Họ và Tên","Ngày sinh","GT","CCCD","Loại MT","Ngày loại","Lý do loại"],
@@ -3391,17 +5229,7 @@ function doExport(type,data,dr){
 
   // ── PL2 Nghiện ──
   if(["all","all_dt","ds_ng"].includes(type)){
-    const h=["STT","Phường/xã","Quận/huyện","Ngày vào sổ","Họ và Tên","Ngày sinh","GT",
-      "HKTT","Nơi ở HT","CCCD","Ngày cấp CCCD","Nơi cấp","Nghề nghiệp","Loại MT",
-      "Tiền án","Tiền sự","Số QĐ công nhận nghiện","Tình trạng","Ghi chú"];
-    const rows=ng.map((r,i)=>[
-      i+1,r.phuong_xa||"",r.quan_huyen||"",fmtDate(r.ngay_vao_so),r.ho_ten||"",
-      fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
-      fmtDate(r.ngay_cap_cccd),r.noi_cap_cccd||"",dv(r,"nghe_nghiep"),dv(r,"loai_ma_tuy_dt"),
-      r.tien_an?"Có":"",r.tien_su?"Có":"",r.so_qd_nghien||"",r.tinh_trang||"",r.ghi_chu||""
-    ]);
-    const cw=h.map((_,i)=>({wch:i===0?4:i===4||i===7||i===8?26:i===16?24:16}));
-    add(makeWs("DANH SÁCH THỐNG KÊ NGƯỜI NGHIỆN MA TÚY","Phụ lục 2",h,rows,cw),"PL2-NGHIỆN");
+    add(buildSheetPL2_Nghien(period,ng),"PL2-Nghiện");
     const ngL=data.nghien.filter(r=>r.da_loai);
     if(ngL.length>0)add(buildSheet("DS NGHIỆN ĐÃ LOẠI",period,
       ["STT","Họ và Tên","Ngày sinh","GT","CCCD","Ngày loại","Lý do loại"],
@@ -3411,18 +5239,7 @@ function doExport(type,data,dr){
 
   // ── PL3 Sau cai ──
   if(["all","all_dt","ds_sc"].includes(type)){
-    const h=["STT","Phường/xã","Quận/huyện","Ngày vào sổ","Họ và Tên","Ngày sinh","GT",
-      "HKTT","Nơi ở HT","CCCD","Trình độ HV","Nghề nghiệp","Loại MT","Hình thức cai",
-      "Nơi cai nghiện","Thời gian cai","Tiền án","Tiền sự","Tình trạng","Ghi chú"];
-    const rows=sc.map((r,i)=>[
-      i+1,r.phuong_xa||"",r.quan_huyen||"",fmtDate(r.ngay_vao_so),r.ho_ten||"",
-      fmtDate(r.ngay_sinh),r.gioi_tinh||"",r.hktt||"",r.noi_o_ht||"",r.cccd||"",
-      r.trinh_do_hv||"",dv(r,"nghe_nghiep"),dv(r,"loai_ma_tuy_dt"),r.hinh_thuc_cai||"",
-      r.noi_cai_nghien||"",r.thoi_gian_cai||"",r.tien_an?"Có":"",r.tien_su?"Có":"",
-      r.tinh_trang||"",r.ghi_chu||""
-    ]);
-    const cw=h.map((_,i)=>({wch:i===0?4:i===4||i===7||i===8||i===14?26:16}));
-    add(makeWs("DANH SÁCH THỐNG KÊ NGƯỜI BỊ QUẢN LÝ SAU CAI NGHIỆN MA TÚY","Phụ lục 3",h,rows,cw),"PL3-SAU CAI");
+    add(buildSheetPL3_SauCai(period,sc),"PL3-Sau cai");
     const scL=data.sau_cai.filter(r=>r.da_loai);
     if(scL.length>0)add(buildSheet("DS SAU CAI ĐÃ LOẠI",period,
       ["STT","Họ và Tên","Ngày sinh","GT","CCCD","Ngày loại","Lý do loại"],
@@ -3474,46 +5291,62 @@ function doExport(type,data,dr){
     add(makeWs("DANH SÁCH ĐỐI TƯỢNG SƯU TRA VỀ MA TÚY",null,h,rows,cw),"DS-SƯU TRA");
   }
 
-  // ── TB807 (BC tuần) ──
+  // ── TB807 (BC tuần) – khớp file mẫu BC_TUAN_483_theo_TB_807.xlsx ──
   if(["all","tb807","bao_cao"].includes(type)){
-    add(buildSheetTB807_B2Tuan(period,data),"B2-PM (tuần)");
-    add(buildSheetTB807_B4(period,data),"B4-XN Dương tính");
-    add(buildSheetTB807_B4_1(period,data),"B4-1 DS DT ngoài DS");
-    add(buildSheetTB807_B5(period,data),"B5-Vụ án");
-    add(buildSheetTB807_B5_1(period,data),"B5-1 DS gây án");
-    add(buildSheetTB807_B6(period,data),"B6-Điều 256a");
-    add(buildSheetTB807_B6_1(period,data),"B6-1 DS Điều 256a");
-    add(buildSheetTB807_B7(period,data),"B7-Nguồn tin");
+    const S=computeStats(data,dr);
+    add(bs807W_B2(S),"B2");
+    add(bs807W_B4(S,data),"B4");
+    add(bs807W_B5(S,data),"B5");
+    add(bs807W_B6(S,data),"B6");
+    add(bs807W_B7(S,data),"B7");
+    add(bs807M_B4_1(S),"B4-1 DS dương tính");
+    add(bs807M_B5_1(S),"B5-1 DS gây án");
+    add(bs807M_B6_1(S),"B6-1 DS Điều 256a");
   }
 
-  // ── BC Tháng (đầy đủ B1–B8) ──
+  // ── BC Tháng 483 (B1–B8) – khớp file mẫu "Biểu mẫu thống kê 483 – Tháng" ──
   if(["all","bc_thang","bao_cao"].includes(type)){
-    add(buildSheetTB807_B1(period,data,dr),"B1-Rà soát tổng hợp");
-    add(buildSheetTB807_B2(period,data,data),"B2-SD NG SC phân loại");
-    add(buildSheetTB807_B3(period,data),"B3-Cập nhật PM");
-    add(buildSheetTB807_B3_1(period,data),"B3-1 DS chưa cập nhật");
-    add(buildSheetTB807_B8(period,data),"B8-Tin từ CSCN");
+    const S=computeStats(data,dr);
+    add(bs807M_B1(S),"B1");
+    add(bs807M_B2(S),"B2 (nơi ở)");
+    add(bs807M_B3(S),"B3");
+    add(bs807M_B3_1(S),"B3-1");
+    add(bs807M_B4(S,data),"B4 (tháng)");
+    add(bs807M_B5(S,data),"B5 (tháng)");
+    add(bs807M_B6(S,data),"B6 (tháng)");
+    add(bs807M_B7(S,data),"B7 (tháng)");
+    add(bs807M_B8(S,data),"B8");
   }
 
   // ── TB136 ──
   if(["all","tb136","bao_cao"].includes(type)){
+    const S=computeStats(data,dr);
+    // Ưu tiên số nhập tay (nếu cán bộ đã nhập ở trang Số liệu báo cáo), còn lại lấy số tự tính
+    const mAuto=(auto,man)=>{const o={...auto};Object.keys(man||{}).forEach(k=>{const v=man[k];if(v!==""&&v!==undefined&&v!==null)o[k]=v;});return o;};
+    const data136={...data,
+      tb136:mAuto(S.tb136,data.tb136),
+      pl2_tb136:mAuto(S.pl2,data.pl2_tb136),
+      pl3_tb136:mAuto(S.pl3,data.pl3_tb136)};
+    data=data136;
     add(buildSheetTB136_PL1(period,data),"TB136-PL1 Tổng");
+    // PL1B: Chi tiết TẤT CẢ đối tượng trong diện quản lý (mọi nhóm: SD, Nghiện,
+    // Sau cai, VPPL, Nghi vấn, Sưu tra) — không giới hạn riêng 3 nhóm SD/Nghiện/
+    // Sau cai như trước, và không liệt kê trùng 1 người 2 lần nếu thuộc nhiều nhóm.
     add(buildSheetTB136_PL1B(period,
-      data.su_dung.filter(r=>!r.da_loai),
-      data.nghien.filter(r=>!r.da_loai),
-      data.sau_cai.filter(r=>!r.da_loai)),"TB136-PL1B Chi tiết");
+      dedupSubjectsForExport((data.doi_tuong||[]).filter(r=>!r.da_loai))
+    ),"TB136-PL1B Chi tiết");
     add(buildSheetTB136_PL2(period,data),"TB136-PL2 Băng nhóm");
     add(buildSheetTB136_PL2B(period,(data.bang_nhom||[]).filter(r=>!r.da_loai)),"TB136-PL2B BN chi tiết");
     add(buildSheetTB136_PL3(period,data),"TB136-PL3 Điểm TC");
     add(buildSheetTB136_PL3B(period,(data.diem_tc||[]).filter(r=>!r.da_loai)),"TB136-PL3B ĐTC chi tiết");
   }
 
-  // ── HD26 (BM tổng + BM1 chi tiết + PL1/PL2/PL3 mẫu mới) ──
+  // ── HD26 (BM tổng + BM1 + BM2 + PL1/PL2/PL3 mẫu mới) ──
   if(["all","hd26","bao_cao"].includes(type)){
-    add(buildSheetHD26_BM_TONG(period,data),"HD26-BM Tổng");
-    add(buildSheetHD26_BM1(period,
-      (data.bang_nhom||[]).filter(r=>!r.da_loai),
-      (data.diem_tc||[]).filter(r=>!r.da_loai)),"HD26-BM1 Chi tiết");
+    const S=computeStats(data,dr);
+    add(bsHD26_TONG(S,data),"BM TỔNG");
+    add(bsHD26_BM1(S),"BM1");
+    add(bsHD26_BM2(S),"BM2");
     add(buildSheetHD26_PL1(period,data.su_dung.filter(r=>!r.da_loai)),"HD26-PL1 Sử dụng");
     add(buildSheetHD26_PL2(period,data.nghien.filter(r=>!r.da_loai)),"HD26-PL2 Nghiện");
     add(buildSheetHD26_PL3(period,data.sau_cai.filter(r=>!r.da_loai)),"HD26-PL3 Sau cai");
@@ -3524,11 +5357,14 @@ function doExport(type,data,dr){
     add(buildSheetMauRaSoat(period,data),"Mẫu rà soát ĐB không MT");
   }
 
-  // ── QĐ28 (Phát sinh mới) ──
+  // ── QĐ28 (Phát sinh mới) – khớp file mẫu DS_PHAT_SINH_MOI_THEO_QD28 ──
   if(["all","qd28"].includes(type)){
-    add(buildSheetQD28_SD(period,sd),"QĐ28-PL1 SD mới");
-    add(buildSheetQD28_NG(period,ng),"QĐ28-PL2 NG mới");
-    add(buildSheetQD28_VPPL(period,vp),"QĐ28-PL3 VPPL");
+    const S=computeStats(data,dr);
+    const psSD=S.sd.psList.filter(r=>!r.da_loai);
+    const psNG=S.ng.psList.filter(r=>!r.da_loai);
+    add(bsQD28_SD(S,psSD.length?psSD:sd),"DS SỬ DỤNG");
+    add(bsQD28_NG(S,psNG.length?psNG:ng),"DS NGHIỆN");
+    add(bsQD28_VPPL(S,vp),"DS VPPL");
   }
 
   if(!wb.SheetNames.length){alert("Không có dữ liệu để xuất!");return;}
@@ -3537,7 +5373,7 @@ function doExport(type,data,dr){
     all:"TOAN_BO",all_dt:"TAT_CA_DOI_TUONG",
     ds_sd:"PL1_SuDung",ds_ng:"PL2_Nghien",ds_sc:"PL3_SauCai",
     ds_vp:"PL8_VPPL",ds_nv:"DS_NghiVan",ds_st:"DS_SuuTra",ds_vu:"PL_VuAn",
-    tb807:"TB807_Tuan",bc_thang:"BC_Thang",tb136:"BC_TB136",hd26:"BC_HD26",qd28:"QD28",
+    tb807:"BC_TUAN_483_theo_TB807",bc_thang:"BC_THANG_483_theo_TB807",tb136:"BC_TB136",hd26:"BC_HD26",qd28:"QD28_Phat_sinh_moi",
     mau_ra_soat:"Mau_Ra_Soat_DB_Khong_MT",
   };
   XLSX.writeFile(wb,`${CONFIG.donVi.replace(/\s+/g,"_")}_${nm[type]||type}_${dt}.xlsx`);
@@ -3612,10 +5448,11 @@ function LoaiModal({rec,onSave,onClose,currentNhomId}){
       onSave({ngay_loai:d.ngay_loai,ly_do_loai:lyDo,ghi_chu_loai:d.ghi_chu_loai,da_loai:true});
     }
   };
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1300}}>
-      <div style={{background:"#fff",borderRadius:12,width:"min(480px,95vw)",boxShadow:"0 8px 32px rgba(0,0,0,.25)",maxHeight:"92vh",overflowY:"auto"}}>
-        <div style={{background:"#b71c1c",borderRadius:"12px 12px 0 0",padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{background:"#fff",borderRadius:12,width:"min(480px,95vw)",boxShadow:"0 8px 32px rgba(0,0,0,.25)",maxHeight:"92vh",overflowY:"auto",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"#b71c1c",borderRadius:"12px 12px 0 0",padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <h3 style={{color:"#fff",fontSize:14,fontWeight:700,margin:0}}>🚫 Loại đối tượng khỏi danh sách</h3>
           <button onClick={onClose} style={{background:"rgba(255,255,255,.2)",border:"none",cursor:"pointer",color:"#fff",width:28,height:28,borderRadius:6,fontSize:16}}>✕</button>
         </div>
@@ -4024,6 +5861,7 @@ function FieldInput({f,value,valueOther,onChange,onChangeOther,error}){
 
 // ── ViewModal – xem chi tiết đối tượng (read-only) ──────────
 function ViewModal({rec,fields,onClose,onEdit}){
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   if(!rec)return null;
   const nhomInfo=(rec.nhom||[]).map(id=>NHOM_LIST.find(n=>n.id===id)).filter(Boolean);
   const grouped={};
@@ -4043,8 +5881,8 @@ function ViewModal({rec,fields,onClose,onEdit}){
   };
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:12}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:16,width:"min(720px,98vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{background:"linear-gradient(135deg,#1a2340,#1e3a5f)",padding:"16px 20px",display:"flex",alignItems:"center",gap:14,borderRadius:"16px 16px 0 0",flexShrink:0}}>
+      <div style={{background:"#fff",borderRadius:16,width:"min(720px,98vw)",maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,.25)",...dragStyle}} onClick={e=>e.stopPropagation()}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#1a2340,#1e3a5f)",padding:"16px 20px",display:"flex",alignItems:"center",gap:14,borderRadius:"16px 16px 0 0",flexShrink:0}}>
           {rec.anh_the
             ?<img src={rec.anh_the} alt="" style={{width:52,height:70,objectFit:"cover",borderRadius:6,border:"2px solid rgba(255,255,255,.3)",flexShrink:0}}/>
             :<div style={{width:52,height:70,background:"rgba(255,255,255,.1)",borderRadius:6,border:"2px dashed rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>👤</div>
@@ -4144,6 +5982,7 @@ function FormModal({fields,initial,title,onSave,onClose}){
   const [dirty,setDirty]=useState(false);
   const ref=useRef();
   const bodyRef=useRef();
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
 
   const set=(k,v)=>{
     setData(p=>{
@@ -4220,10 +6059,10 @@ function FormModal({fields,initial,title,onSave,onClose}){
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1000,overflowY:"auto",padding:"12px 8px"}}
       ref={ref} onClick={e=>e.target===ref.current&&handleClose()}>
       <div style={{background:"#fff",borderRadius:14,width:"min(980px,98vw)",margin:"auto",
-        boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"95vh"}}>
+        boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"95vh",...dragStyle}}>
 
-        {/* ── Header ── */}
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",
+        {/* ── Header (kéo được — giữ chuột vào đây rồi kéo để di chuyển cửa sổ) ── */}
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",
           padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div>
             <div style={{color:"#fff",fontSize:15,fontWeight:700}}>{title}</div>
@@ -4727,6 +6566,7 @@ function Dashboard({data}){
   const sdDN=sd.filter(r=>r.cap_nhat_pm==="Đã nhập").length,ngDN=ng.filter(r=>r.cap_nhat_pm==="Đã nhập").length,scDN=sc.filter(r=>r.cap_nhat_pm==="Đã nhập").length;
   const khuPho=data.khu_pho||[];
   const activeSubjects=useMemo(()=>dt.filter(r=>!r.da_loai),[dt]);
+  const loaiSubjects=useMemo(()=>dt.filter(r=>r.da_loai),[dt]);
   const hotspot=useMemo(()=>computeKhuPhoHotspot(khuPho,activeSubjects),[khuPho,activeSubjects]);
   const topKp=hotspot.stats[0];
   const maxTong=topKp?topKp.tong:0;
@@ -4744,7 +6584,7 @@ function Dashboard({data}){
           {v:nv.length,ic:"🔍",lbl:"Đối tượng nghi vấn",sub:"Đang theo dõi",cls:"stat-card-nv",clr:"var(--g-nv)"},
           {v:st.length,ic:"📂",lbl:"Đối tượng sưu tra",sub:"Đang theo dõi",cls:"stat-card-st",clr:"var(--g-st)"},
           {v:vu.length,ic:"📁",lbl:"Vụ án/Vụ việc",sub:"Đang điều tra",cls:"stat-card-vu",clr:"var(--g-vu)"},
-          {v:sd.length+ng.length+sc.length+vp.length+nv.length+st.length,ic:"👥",lbl:"Tổng đang quản lý",sub:"Tất cả các nhóm",cls:"stat-card-total",clr:"var(--navy)"},
+          {v:countUniqueSubjects(activeSubjects),ic:"👥",lbl:"Tổng đang quản lý",sub:"Không trùng, theo CCCD/họ tên",cls:"stat-card-total",clr:"var(--navy)"},
         ].map((s,i)=>(
           <div key={i} className={`stat-card ${s.cls}`}>
             <div className="sc-icon">{s.ic}</div>
@@ -4795,7 +6635,7 @@ function Dashboard({data}){
             ))}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"#f8f9fe",borderRadius:8,border:"1px solid var(--border)",marginTop:4}}>
               <span style={{fontSize:13,fontWeight:700,color:"var(--navy)"}}>Tổng đã thanh loại</span>
-              <span style={{fontSize:20,fontWeight:800,color:"var(--navy)"}}>{(data.su_dung||[]).filter(r=>r.da_loai).length+(data.nghien||[]).filter(r=>r.da_loai).length+(data.sau_cai||[]).filter(r=>r.da_loai).length+(data.vppl||[]).filter(r=>r.da_loai).length+(data.nghi_van||[]).filter(r=>r.da_loai).length+(data.suu_tra||[]).filter(r=>r.da_loai).length}</span>
+              <span style={{fontSize:20,fontWeight:800,color:"var(--navy)"}} title="Đếm không trùng theo CCCD/họ tên — 1 người thuộc nhiều nhóm chỉ tính 1 lần">{countUniqueSubjects(loaiSubjects)}</span>
             </div>
           </div>
         </div>
@@ -4895,6 +6735,69 @@ function Dashboard({data}){
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// KHUNG KIỂM TRA LOGIC SỐ LIỆU + XEM TRƯỚC SỐ TỰ TÍNH
+// Hiển thị các con số hệ thống tự tính từ dữ liệu bản ghi và
+// cảnh báo khi số liệu không cân đối (đầu kỳ + phát sinh − thanh
+// loại ≠ số hiện đang quản lý...).
+// ══════════════════════════════════════════════════════════════
+function LogicCheckBox({data,dr}){
+  const [open,setOpen]=useState(true);
+  const S=useMemo(()=>{try{return computeStats(data,dr);}catch(e){return null;}},[data,dr]);
+  if(!S)return null;
+  const warns=validateStats(S);
+  const cell=(l,v)=>(
+    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 10px",minWidth:130,flex:"1 1 130px"}}>
+      <div style={{fontSize:10.5,fontWeight:700,color:"#64748b",lineHeight:1.3}}>{l}</div>
+      <div style={{fontSize:17,fontWeight:800,color:"#0c1b4d"}}>{v}</div>
+    </div>
+  );
+  const grp=(title,rows)=>(
+    <div style={{marginBottom:8}}>
+      <div style={{fontSize:11.5,fontWeight:800,color:"#334155",margin:"6px 0 5px"}}>{title}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{rows}</div>
+    </div>
+  );
+  return(
+    <div style={{background:warns.length?"#fff7ed":"#f0fdf4",border:"1px solid "+(warns.length?"#fdba74":"#a7f3d0"),borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{fontSize:12.5,fontWeight:800,color:warns.length?"#9a3412":"#166534"}}>
+          🧮 Kiểm tra logic số liệu — {warns.length?warns.length+" cảnh báo cần rà lại":"số liệu cân đối"}
+        </span>
+        <span style={{fontSize:11,color:"#64748b"}}>{open?"▲ Thu gọn":"▼ Mở rộng"}</span>
+      </div>
+      {open&&<div style={{marginTop:8}}>
+        {warns.length>0&&<ul style={{margin:"0 0 10px 18px",fontSize:12,lineHeight:1.6,color:"#9a3412"}}>
+          {warns.map((w,i)=><li key={i}>{w}</li>)}
+        </ul>}
+        {grp("Người sử dụng trái phép chất ma túy",[
+          cell("Đầu kỳ",S.sd.dauKy),cell("Phát sinh mới",S.sd.psMoi),cell("Thanh loại",S.sd.tl.tong),
+          cell("Hiện quản lý",S.sd.hienCon),cell("Cập nhật PM",S.pm.sd.nhap+"/"+S.pm.sd.tong)])}
+        {grp("Người nghiện ma túy",[
+          cell("Đầu kỳ",S.ng.dauKy),cell("Phát sinh mới",S.ng.psMoi),cell("Thanh loại",S.ng.tl.tong),
+          cell("Hiện quản lý",S.ng.hienCon),cell("Cập nhật PM",S.pm.ng.nhap+"/"+S.pm.ng.tong)])}
+        {grp("Người bị quản lý sau cai",[
+          cell("Đầu kỳ",S.sc.dauKy),cell("Phát sinh mới",S.sc.psMoi),cell("Thanh loại",S.sc.tl.tong),
+          cell("Hiện quản lý",S.sc.hienCon),cell("Cập nhật PM",S.pm.sc.nhap+"/"+S.pm.sc.tong)])}
+        {grp("Diện quản lý TB136 · Băng nhóm · Điểm tổ chức, chứa chấp",[
+          cell("ĐT đầu kỳ",S.tb136.so_dau_ky),cell("ĐT phát sinh",S.tb136.ps_moi),
+          cell("ĐT thanh loại",S.tb136.tl_tong),cell("ĐT hiện quản lý",S.tb136.hien_ql),
+          cell("Sưu tra",S.tb136.bp_suu_tra),cell("Hiềm nghi",S.tb136.bp_hiem_nghi),
+          cell("Chuyên án",S.tb136.bp_chuyen_an),
+          cell("Băng nhóm hiện QL",S.pl2.bn_hien_ql),cell("Điểm TC/CC hiện QL",S.pl3.thucTe)])}
+        {grp("Xét nghiệm · Vụ án · Điều 256a · Hướng dẫn 26",[
+          cell("Dương tính MT",S.b4.duong_tinh),cell("DT ngoài DS QL",S.b4.dt_ngoai_ds),
+          cell("Vụ án MT",S.b5.ma_tuy.vu),cell("Vụ hình sự khác",S.b5.gn.vu+S.b5.cy.vu+S.b5.cuop.vu+S.b5.trom.vu+S.b5.gr.vu),
+          cell("Điều 256a (vụ/ĐT)",S.b6.so_vu+"/"+S.b6.so_dt),
+          cell("HD26 – ĐT bán hiện còn",S.hd26.dt_ban_hien_con),cell("HD26 – Điểm hiện còn",S.hd26.diem_tc_hien_con)])}
+        <div style={{fontSize:11,color:"#64748b",lineHeight:1.6,marginTop:6,borderTop:"1px dashed #cbd5e1",paddingTop:6}}>
+          💡 Các ô nhập bên dưới chỉ dùng để <b>ghi đè</b> khi số liệu thực tế khác số tự tính. Ô để trống → biểu mẫu lấy số tự tính ở trên.
+        </div>
+      </div>}
+    </div>
+  );
+}
+
 function ReportPage({data,onSaveReport,toast}){
   const [rpt,setRpt]=useState({b4:data.b4||{},b5:data.b5||{},b6:data.b6||{},b7:data.b7||{},b2x:data.b2x||{},tb136:data.tb136||{},pl2_tb136:data.pl2_tb136||{},pl3_tb136:data.pl3_tb136||{},hd26:data.hd26||{},b8:data.b8||{}});
   const [dr,setDr]=useState({from:"",to:""});
@@ -4957,8 +6860,12 @@ function ReportPage({data,onSaveReport,toast}){
           </div>
           <button className="btn btn-green btn-sm" onClick={save}>💾 Lưu</button>
           <button className="btn btn-primary btn-sm" onClick={()=>doExport("bao_cao",{...data,...rpt},dr)}>📥 Xuất Excel</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>exportWordHD26({...data,...rpt},dr,toast)}>📄 BC Word HD26</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>exportWordTB136({...data,...rpt},dr,toast)}>📄 BC Word TB136</button>
         </div>
       </div>
+
+      <LogicCheckBox data={{...data,...rpt}} dr={dr}/>
 
       <div style={{display:"flex",gap:6,marginBottom:12,background:"#f1f5f9",padding:4,borderRadius:10}}>
         {tabs.map(t=>(
@@ -5029,6 +6936,9 @@ function BackupPage({data,onRestore,toast}){
   const [showPlaceholder,setShowPlaceholder]=useState(false);
   const [showTemplateFill,setShowTemplateFill]=useState(false);
   const [showExcelFill,setShowExcelFill]=useState(false);
+  // Khoảng thời gian áp dụng cho "Xuất Excel theo nhóm" — để trống = xuất toàn bộ thời gian
+  const [expFrom,setExpFrom]=useState("");
+  const [expTo,setExpTo]=useState("");
   const fileRef=useRef();
   const doBackup=()=>{
     const blob=new Blob([JSON.stringify({version:CONFIG.version,timestamp:new Date().toISOString(),donVi:CONFIG.donVi,data},null,2)],{type:"application/json"});
@@ -5087,6 +6997,17 @@ function BackupPage({data,onRestore,toast}){
       </div>
       <div className="card"><div className="card-hd"><h3>📊 Xuất Excel theo nhóm</h3></div>
         <div style={{padding:"16px 14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#f8f9fe",border:"1px solid var(--border)",borderRadius:8,padding:"10px 14px",marginBottom:14}}>
+            <span style={{fontSize:12.5,fontWeight:700,color:"var(--navy)"}}>📅 Khoảng thời gian:</span>
+            <input type="date" className="fi" style={{width:150}} value={expFrom} onChange={e=>setExpFrom(e.target.value)}/>
+            <span style={{fontSize:12,color:"var(--muted)"}}>đến</span>
+            <input type="date" className="fi" style={{width:150}} value={expTo} onChange={e=>setExpTo(e.target.value)}/>
+            {(expFrom||expTo)&&
+              <button className="btn btn-ghost btn-sm" onClick={()=>{setExpFrom("");setExpTo("");}}>✕ Xoá lọc</button>}
+            <span style={{fontSize:11.5,color:"var(--muted2)"}}>
+              {expFrom||expTo?"Chỉ áp dụng cho các mục lọc theo ngày vào sổ/ngày phát hiện":"Để trống = xuất toàn bộ thời gian"}
+            </span>
+          </div>
           <div className="export-grid">
             {[
               {type:"ds_sd",icon:"💊",title:"Sử dụng TPCMT",badge:"PL1",desc:`${data.su_dung?.filter(r=>!r.da_loai).length||0} đang QL`,clr:"var(--g-sd)",bg:"var(--g-sd-bg)"},
@@ -5097,8 +7018,8 @@ function BackupPage({data,onRestore,toast}){
               {type:"ds_st",icon:"📂",title:"Đối tượng sưu tra",badge:"DS-ST",desc:`${(data.suu_tra||[]).filter(r=>!r.da_loai).length} đối tượng`,clr:"var(--g-st)",bg:"var(--g-st-bg)"},
               {type:"all_dt",icon:"👥",title:"Tất cả đối tượng",badge:"PL1+2+3+VPPL+NV+ST",desc:"1 file đầy đủ tất cả nhóm",clr:"#1b5e20",bg:"#f1f8e9"},
               {type:"ds_vu",icon:"📁",title:"Vụ án PC04",badge:"PL VỤ·155 cột",desc:`${data.vu_an?.filter(r=>!r.da_loai).length||0} vụ`,clr:"var(--g-vu)",bg:"var(--g-vu-bg)"},
-              {type:"tb807",icon:"📊",title:"BC Tuần TB807",badge:"B2→B7",desc:"Quản lý + Xét nghiệm + Vụ án",clr:"#1565c0",bg:"#f0f6ff"},
-              {type:"bc_thang",icon:"📅",title:"BC Tháng 483",badge:"B1→B8",desc:"Đầy đủ B1–B8",clr:"#0277bd",bg:"#e1f5fe"},
+              {type:"tb807",icon:"📊",title:"BC Tuần 483 (TB807)",badge:"B2·B4·B5·B6·B7",desc:"Đúng bố cục file mẫu BC tuần, số liệu tự tính",clr:"#1565c0",bg:"#f0f6ff"},
+              {type:"bc_thang",icon:"📅",title:"BC Tháng 483 (TB807)",badge:"B1→B8",desc:"Đúng bố cục file mẫu tháng, kèm B3-1/B4-1/B5-1/B6-1",clr:"#0277bd",bg:"#e1f5fe"},
               {type:"tb136",icon:"📋",title:"TB136 đầy đủ",badge:"PL1→PL3B",desc:"6 sheet tổng + chi tiết",clr:"var(--green)",bg:"#f0fdf4"},
               {type:"hd26",icon:"🔍",title:"Hướng dẫn 26",badge:"BM+PL1→PL3",desc:"BM Tổng + BM1 + DS SD/Nghiện/Sau cai (mẫu mới)",clr:"var(--g-hd26)",bg:"var(--g-hd26-bg)"},
               {type:"qd28",icon:"📝",title:"QĐ28 Phát sinh",badge:"PL1→PL3",desc:"SD + NG + VPPL mới",clr:"var(--orange)",bg:"#fff7ed"},
@@ -5115,11 +7036,27 @@ function BackupPage({data,onRestore,toast}){
                 </div>
                 <p>{desc}</p>
                 <button className="btn btn-sm" style={{background:clr,color:"#fff",width:"100%",justifyContent:"center",marginTop:2}}
-                  onClick={()=>doExport(type,data,{from:"",to:""})}>
+                  onClick={()=>doExport(type,data,{from:expFrom,to:expTo})}>
                   📥 Xuất Excel
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="card"><div className="card-hd"><h3>📄 Xuất báo cáo Word theo đề cương</h3></div>
+        <div style={{padding:"16px 14px"}}>
+          <div style={{background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"11px 13px",marginBottom:14,fontSize:12.5,lineHeight:1.6}}>
+            💡 Xuất file Word (.doc) đúng đề cương báo cáo <b>Hướng dẫn 26/HD-BCA-C04</b> và <b>Thông báo 136/TB-CATP</b>,
+            toàn bộ số liệu trong phần thuyết minh được <b>điền tự động</b> từ dữ liệu đang quản lý theo khoảng thời gian đã chọn ở trên.
+            Mở bằng Microsoft Word, chỉnh phần nhận xét, đánh giá rồi trình ký.
+          </div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <button className="btn btn-primary" style={{flex:"1 1 240px",justifyContent:"center"}}
+              onClick={()=>exportWordHD26(data,{from:expFrom,to:expTo},toast)}>📄 Báo cáo Hướng dẫn 26 (.doc)</button>
+            <button className="btn btn-green" style={{flex:"1 1 240px",justifyContent:"center"}}
+              onClick={()=>exportWordTB136(data,{from:expFrom,to:expTo},toast)}>📄 Báo cáo Thông báo 136 (.doc)</button>
           </div>
         </div>
       </div>
@@ -5186,11 +7123,12 @@ function PlaceholderModal({onClose,toast}){
     copyText(lines);
   };
 
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1400,overflowY:"auto",padding:"12px 8px"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(760px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh"}}>
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(760px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div>
             <div style={{color:"#fff",fontSize:15,fontWeight:700}}>🏷️ Placeholder tất cả các trường ({allFields.length})</div>
             <div style={{color:"rgba(255,255,255,.6)",fontSize:11,marginTop:2}}>Chèn <code>{"{{ten_truong}}"}</code> vào file mẫu Word/Excel để điền tự động</div>
@@ -5342,11 +7280,12 @@ function TemplateFillModal({onClose,toast,doiTuong}){
     e.target.value="";
   };
 
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1400,overflowY:"auto",padding:"12px 8px"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(600px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh"}}>
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(600px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div>
             <div style={{color:"#fff",fontSize:15,fontWeight:700}}>📝 Điền mẫu Word tự động (hàng loạt)</div>
             <div style={{color:"rgba(255,255,255,.6)",fontSize:11,marginTop:2}}>Chọn khoảng ngày → mở file mẫu .docx → tự động điền toàn bộ trường đã nhập</div>
@@ -5498,11 +7437,12 @@ function ExcelTemplateFillModal({onClose,toast,doiTuong}){
     e.target.value="";
   };
 
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1400,overflowY:"auto",padding:"12px 8px"}}
       onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(600px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh"}}>
-        <div style={{background:"linear-gradient(135deg,#7c3f00 0%,#f57c00 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(600px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"92vh",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#7c3f00 0%,#f57c00 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div>
             <div style={{color:"#fff",fontSize:15,fontWeight:700}}>📊 Điền mẫu Excel tự động (hàng loạt)</div>
             <div style={{color:"rgba(255,255,255,.75)",fontSize:11,marginTop:2}}>Chọn khoảng ngày → mở file mẫu .xlsx → tự động điền toàn bộ trường đã nhập</div>
@@ -7215,6 +9155,7 @@ function DaLoaiDataboardPage({doiTuong,setDoiTuong,toast}){
 // ── ImportPreviewModal ───────────────────────────────────────
 function ImportPreviewModal({importPreview,setImportPreview,confirmImport}){
   const [updateSel,setUpdateSel]=useState({});
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   const toggleUpdate=(id)=>setUpdateSel(p=>({...p,[id]:!p[id]}));
   const selAll=()=>{const m={};(importPreview.updatable||[]).forEach(u=>{m[u.existId]=true;});setUpdateSel(m);};
   const selNone=()=>setUpdateSel({});
@@ -7222,8 +9163,8 @@ function ImportPreviewModal({importPreview,setImportPreview,confirmImport}){
   const canConfirm=importPreview.newRows.length>0||numSelected>0;
   return(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"#fff",borderRadius:14,width:"min(680px,98vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.22)"}}>
-            <div style={{padding:"16px 22px 12px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{background:"#fff",borderRadius:14,width:"min(680px,98vw)",maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 16px 48px rgba(0,0,0,.22)",...dragStyle}}>
+            <div {...dragHandleProps} style={{...dragHandleProps.style,padding:"16px 22px 12px",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <div style={{fontWeight:800,fontSize:16,color:"var(--navy)"}}>📥 Xác nhận nhập từ Excel TB136</div>
                 <div style={{fontSize:11.5,color:"var(--muted)",marginTop:2}}>{importPreview.fileName}</div>
@@ -7494,6 +9435,9 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
   const filtered=byDate.filter(r=>matchesNguoiSearch(r,search));
   const pages=Math.max(1,Math.ceil(filtered.length/PER));
   const paged=filtered.slice((pg-1)*PER,pg*PER);
+  // Cảnh báo Số CCCD bị trùng giữa 2 tên khác nhau — nhiều khả năng do gõ nhầm
+  // CCCD ở 1 trong 2 bản ghi, cần cán bộ kiểm tra và sửa lại cho đúng.
+  const cccdConflicts=useMemo(()=>findCccdConflicts(doiTuong.filter(r=>!r.da_loai)),[doiTuong]);
 
   const save=async rec=>{
     let next;
@@ -7529,8 +9473,8 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
         <div>
           <div className="page-title">👤 Danh sách đối tượng quản lý</div>
           <div className="page-sub">
-            <span className="badge badge-navy">✓ {active.length} đang QL</span>
-            {loai.length>0&&<span className="badge badge-gray">🚫 {loai.length} đã loại</span>}
+            <span className="badge badge-navy" title="Đếm không trùng theo CCCD/họ tên">✓ {countUniqueSubjects(active)} đang QL</span>
+            {loai.length>0&&<span className="badge badge-gray">🚫 {countUniqueSubjects(loai)} đã loại</span>}
           </div>
         </div>
         <div className="btn-grp">
@@ -7539,10 +9483,21 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
             <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_4_nofill" placeholder="Tìm kiếm..." value={search} onChange={e=>{setSearch(e.target.value);setPg(1);}}/>
           </div>
           {!tabLoai&&<button className="btn btn-green btn-sm" onClick={()=>importRef.current?.click()}>📥 Nhập từ Excel TB136</button>}
+          {!tabLoai&&<button className="btn btn-blue btn-sm" onClick={()=>exportDoiTuongQuanLyExcel(filtered,toast)} title="Xuất Excel toàn bộ đối tượng đang hiển thị (theo bộ lọc hiện tại)">📊 Xuất Excel danh sách</button>}
           {!tabLoai&&<button className="btn btn-primary btn-sm" onClick={()=>setForm({mode:"add",rec:null})}>＋ Thêm đối tượng</button>}
           <input ref={importRef} type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importFromExcel(e.target.files[0]);e.target.value="";}}/>
         </div>
       </div>
+
+      {cccdConflicts.length>0&&
+        <div style={{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:10,padding:"10px 16px",marginBottom:14,fontSize:12.5,color:"#9a3412"}}>
+          <b>⚠️ Phát hiện {cccdConflicts.length} Số CCCD bị dùng chung cho ≥2 tên khác nhau</b> — nhiều khả năng do gõ nhầm CCCD ở 1 trong 2 bản ghi, xin kiểm tra và sửa lại cho đúng (những trường hợp này KHÔNG bị gộp vào tổng số đối tượng để tránh làm mất người thật khỏi thống kê):
+          <ul style={{margin:"6px 0 0 18px",padding:0}}>
+            {cccdConflicts.map(c=>(
+              <li key={c.cccd}>CCCD <b>{c.cccd}</b>: {c.records.map(r=>r.ho_ten).join(" ↔ ")}</li>
+            ))}
+          </ul>
+        </div>}
 
       {/* Nhom filter tabs */}
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
@@ -9484,6 +11439,7 @@ function NghiepVuExportModal({title,data,dateRange,onClose,toast}){
   const [code,setCode]=useState("");
   const [from,setFrom]=useState(dateRange?.from||"");
   const [to,setTo]=useState(dateRange?.to||"");
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   const inpStyle={width:"100%",padding:"8px 11px",border:"1.5px solid #d0d7e8",borderRadius:7,fontSize:13,color:"#1a2340",outline:"none",boxSizing:"border-box"};
 
   const matched=useMemo(()=>{
@@ -9514,8 +11470,8 @@ function NghiepVuExportModal({title,data,dateRange,onClose,toast}){
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(440px,96vw)",boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden"}}>
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(440px,96vw)",boxShadow:"0 20px 60px rgba(0,0,0,.3)",overflow:"hidden",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{color:"#fff",fontSize:15,fontWeight:700}}>📊 Xuất báo cáo thống kê</div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16}}>✕</button>
         </div>
@@ -9603,11 +11559,12 @@ function NghiepVuFormModal({title,initial,onSave,onClose,toast}){
     if(!validate())return;
     onSave({...caseData,doi_tuong:subjects.filter(s=>String(s.ho_ten||"").trim())});
   };
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1000,overflowY:"auto",padding:"12px 8px"}}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(920px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"95vh"}}>
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(920px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"95vh",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div style={{color:"#fff",fontSize:15,fontWeight:700}}>{title}</div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16}}>✕</button>
         </div>
@@ -9660,11 +11617,12 @@ function NghiepVuFormModal({title,initial,onSave,onClose,toast}){
 
 // ── Modal xem chi tiết (read-only) 1 Vụ việc + toàn bộ Đối tượng ──
 function NghiepVuViewModal({rec,onClose,onEdit}){
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
   if(!rec)return null;
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1050,overflowY:"auto",padding:"12px 8px"}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:14,width:"min(820px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(820px,98vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",...dragStyle}} onClick={e=>e.stopPropagation()}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{color:"#fff",fontSize:15,fontWeight:700}}>👁 Chi tiết vụ việc: {rec.ma_vu_viec||"—"}</div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16}}>✕</button>
         </div>
@@ -10105,7 +12063,7 @@ function App(){
                 bang_nhom:bang_nhom.filter(r=>!r.da_loai).length,
                 diem_tc:diem_tc.filter(r=>!r.da_loai).length,
                 hd26_dt:hd26_dt.filter(r=>!r.da_loai).length,
-                doi_tuong:doiTuong.filter(r=>!r.da_loai).length,
+                doi_tuong:countUniqueSubjects(doiTuong.filter(r=>!r.da_loai)),
                 canh_bao:collectAlerts(allData,parseInt(localStorage.getItem("alert_warn_days")||"30")).length,
               };
               const cnt=counts[n.id];
