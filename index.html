@@ -15,9 +15,9 @@
 <script src="https://unpkg.com/pizzip@3.1.7/dist/pizzip.js"></script>
 <script src="https://unpkg.com/docxtemplater@3.50.0/js/docxtemplater.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Dùng phông có sẵn của hệ điều hành – không tải phông từ Internet để chạy được offline */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body,#root{height:100%;font-family:'Inter','Segoe UI',Arial,sans-serif;font-size:13.5px}
+html,body,#root{height:100%;font-family:'Inter','Segoe UI',system-ui,-apple-system,'Roboto','Helvetica Neue',Arial,sans-serif;font-size:13.5px}
 body{background:#f0f2f8;color:#1a2340}
 :root{
   color-scheme:light;
@@ -993,10 +993,67 @@ const CONFIG={donVi:"Công an phường Tân Bình",capTren:"Công an TP. Hồ C
   if(cfg.capTren)CONFIG.capTren=cfg.capTren;
   if(cfg.quanHuyen)CONFIG.quanHuyen=cfg.quanHuyen;
 })();
-// ── Tài khoản admin duy nhất – mật khẩu lưu localStorage ──
-const ADMIN_PWD_KEY="admin_pwd_v1";
-const getAdminPwd=()=>localStorage.getItem(ADMIN_PWD_KEY)||"admin";
-const setAdminPwd=(p)=>localStorage.setItem(ADMIN_PWD_KEY,p);
+// ══════════════════════════════════════════════════════════════════════
+// BẢO MẬT TÀI KHOẢN (v8.3)
+// Mật khẩu KHÔNG còn lưu dạng văn bản thường. Hệ thống lưu chuỗi băm
+// PBKDF2-SHA256 (210.000 vòng lặp) kèm muối ngẫu nhiên 16 byte, nên kể cả
+// khi người khác đọc được localStorage cũng không suy ra được mật khẩu.
+// Bản cũ (admin_pwd_v1) được tự động chuyển sang dạng băm ở lần đăng nhập
+// đúng đầu tiên rồi xóa bản văn bản thường.
+// ══════════════════════════════════════════════════════════════════════
+const ADMIN_PWD_KEY="admin_pwd_v1";        // (cũ – chỉ dùng để chuyển đổi)
+const ADMIN_PWD_KEY2="admin_pwd_v2";       // {salt,hash,iter}
+const PWD_FAIL_KEY="admin_pwd_fail_v1";    // chống dò mật khẩu
+const PWD_ITER=210000;
+const _hex=buf=>Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+const _rndHex=n=>{const a=new Uint8Array(n);crypto.getRandomValues(a);return _hex(a.buffer);};
+async function _pbkdf2(pwd,saltHex,iter){
+  const enc=new TextEncoder();
+  const salt=Uint8Array.from(saltHex.match(/.{2}/g).map(h=>parseInt(h,16)));
+  const key=await crypto.subtle.importKey("raw",enc.encode(pwd),{name:"PBKDF2"},false,["deriveBits"]);
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt,iterations:iter||PWD_ITER,hash:"SHA-256"},key,256);
+  return _hex(bits);
+}
+async function setAdminPwd(p){
+  const salt=_rndHex(16);
+  const hash=await _pbkdf2(p,salt,PWD_ITER);
+  localStorage.setItem(ADMIN_PWD_KEY2,JSON.stringify({salt,hash,iter:PWD_ITER,at:Date.now()}));
+  localStorage.removeItem(ADMIN_PWD_KEY);
+  return true;
+}
+// Trạng thái chống dò: khóa tạm sau nhiều lần sai liên tiếp
+function pwdLockInfo(){
+  let st={n:0,until:0};
+  try{st=JSON.parse(localStorage.getItem(PWD_FAIL_KEY)||"null")||st;}catch{}
+  const left=Math.max(0,Math.ceil((st.until-Date.now())/1000));
+  return{fails:st.n||0,lockedFor:left};
+}
+function _pwdFail(){
+  const{fails}=pwdLockInfo();
+  const n=fails+1;
+  // 5 lần sai → khóa 30 giây, mỗi 5 lần tiếp theo thời gian khóa tăng gấp đôi
+  const wait=n>=5?30*1000*Math.pow(2,Math.floor(n/5)-1):0;
+  localStorage.setItem(PWD_FAIL_KEY,JSON.stringify({n,until:wait?Date.now()+wait:0}));
+  return Math.ceil(wait/1000);
+}
+const _pwdOk=()=>localStorage.removeItem(PWD_FAIL_KEY);
+// Kiểm tra mật khẩu – trả về {ok, lockedFor, mustChange}
+async function verifyAdminPwd(pwd){
+  const lock=pwdLockInfo();
+  if(lock.lockedFor>0)return{ok:false,lockedFor:lock.lockedFor};
+  let rec=null;
+  try{rec=JSON.parse(localStorage.getItem(ADMIN_PWD_KEY2)||"null");}catch{}
+  if(rec&&rec.salt&&rec.hash){
+    const h=await _pbkdf2(pwd,rec.salt,rec.iter||PWD_ITER);
+    if(h===rec.hash){_pwdOk();return{ok:true,mustChange:pwd==="admin"};}
+    return{ok:false,lockedFor:_pwdFail()};
+  }
+  // Chưa có bản băm → so với bản cũ/mật khẩu mặc định rồi nâng cấp ngay
+  const legacy=localStorage.getItem(ADMIN_PWD_KEY)||"admin";
+  if(pwd===legacy){await setAdminPwd(pwd);_pwdOk();return{ok:true,mustChange:pwd==="admin"};}
+  return{ok:false,lockedFor:_pwdFail()};
+}
+const adminPwdIsDefault=()=>!localStorage.getItem(ADMIN_PWD_KEY2)&&!localStorage.getItem(ADMIN_PWD_KEY);
 const ADMIN_ACC={id:"admin",name:"Quản trị viên",role:"Quản trị hệ thống",level:"admin",avatar:"🔐"};
 const AUTH_KEY="auth_session_v1";
 const getSession=()=>{try{const s=JSON.parse(localStorage.getItem(AUTH_KEY)||"null");if(!s)return null;if(Date.now()-s.ts>8*3600*1000){localStorage.removeItem(AUTH_KEY);return null;}return s;}catch{return null;}};
@@ -2301,11 +2358,11 @@ function matchesNguoiSearch(r,search){
 //   trường hợp nhập địa chỉ dạng tự do chưa chọn đúng khu phố ở danh mục.
 // So khớp không phân biệt hoa/thường và không dấu để tránh lệch chính tả.
 // ══════════════════════════════════════════════════════════════
-function computeKhuPhoHotspot(khuPho,subjects){
+function computeKhuPhoHotspot(khuPho,subjects,loaiSubjects){
   const norm=s=>stripDiacriticsVN(s).toLowerCase().trim();
   const stats=(khuPho||[]).map(kp=>({
     id:kp.id,ten:kp.ten_moi||kp.ten_cu||"(chưa đặt tên)",ten_cu:kp.ten_cu||"",
-    quanLy:0,theoCuTru:0,
+    quanLy:0,theoCuTru:0,nu:0,chuaPM:0,daLoai:0,
     perNhom:{su_dung:0,nghien:0,sau_cai:0,vppl:0,nghi_van:0,suu_tra:0},
   }));
   const byName=new Map(stats.filter(s=>norm(s.ten)).map(s=>[norm(s.ten),s]));
@@ -2313,9 +2370,13 @@ function computeKhuPhoHotspot(khuPho,subjects){
   (subjects||[]).forEach(r=>{
     const nhomList=r.nhom||[];
     const bump=s=>nhomList.forEach(n=>{if(s.perNhom[n]!=null)s.perNhom[n]++;});
+    const extra=(s,rec)=>{
+      if(String(rec.gioi_tinh||"")==="Nữ")s.nu++;
+      if(String(rec.cap_nhat_pm||"").trim()!=="Đã nhập")s.chuaPM++;
+    };
     const assignedName=norm(r.khu_pho_moi||"");
     if(assignedName&&byName.has(assignedName)){
-      const s=byName.get(assignedName);s.quanLy++;bump(s);return;
+      const s=byName.get(assignedName);s.quanLy++;bump(s);extra(s,r);return;
     }
     const addr=norm((r.hktt||"")+" "+(r.noi_o_ht||""));
     let hit=null;
@@ -2325,14 +2386,37 @@ function computeKhuPhoHotspot(khuPho,subjects){
         if(n&&n.length>=3&&addr.includes(n)){hit=s;break;}
       }
     }
-    if(hit){hit.theoCuTru++;bump(hit);}
+    if(hit){hit.theoCuTru++;bump(hit);extra(hit,r);}
     else khongXacDinh++;
   });
+  // Đối tượng ĐÃ THANH LOẠI – dùng để so sánh biến động theo khu phố
+  (loaiSubjects||[]).forEach(r=>{
+    const nameL=norm(r.khu_pho_moi||"");
+    let s=nameL&&byName.has(nameL)?byName.get(nameL):null;
+    if(!s){
+      const addr=norm((r.hktt||"")+" "+(r.noi_o_ht||""));
+      if(addr)for(const x of stats){const n=norm(x.ten);if(n&&n.length>=3&&addr.includes(n)){s=x;break;}}
+    }
+    if(s)s.daLoai++;
+  });
   stats.forEach(s=>{s.tong=s.quanLy+s.theoCuTru;});
-  stats.sort((a,b)=>b.tong-a.tong);
+  stats.sort((a,b)=>b.tong-a.tong||a.ten.localeCompare(b.ten,"vi"));
   const tongCoXacDinh=stats.reduce((a,s)=>a+s.tong,0);
   const soKpCoDT=stats.filter(s=>s.tong>0).length;
-  return{stats,khongXacDinh,tongCoXacDinh,soKpCoDT,tongKp:stats.length};
+  const tongToanBo=tongCoXacDinh+khongXacDinh;
+  // Cơ cấu theo 6 diện quản lý trên toàn địa bàn
+  const coCau={su_dung:0,nghien:0,sau_cai:0,vppl:0,nghi_van:0,suu_tra:0};
+  (subjects||[]).forEach(r=>(r.nhom||[]).forEach(n=>{if(coCau[n]!=null)coCau[n]++;}));
+  const top3=stats.slice(0,3).reduce((a,s)=>a+s.tong,0);
+  return{
+    stats,khongXacDinh,tongCoXacDinh,soKpCoDT,tongKp:stats.length,tongToanBo,coCau,
+    binhQuan:soKpCoDT?Math.round(tongCoXacDinh/soKpCoDT*10)/10:0,
+    top3Share:tongCoXacDinh?Math.round(top3/tongCoXacDinh*100):0,
+    kpSach:stats.filter(s=>s.tong===0).length,
+    tongNu:stats.reduce((a,s)=>a+s.nu,0),
+    tongChuaPM:stats.reduce((a,s)=>a+s.chuaPM,0),
+    tongDaLoai:stats.reduce((a,s)=>a+s.daLoai,0),
+  };
 }
 const filterActive=(list,from,to,dkey="ngay_vao_so")=>{
   const active=list.filter(r=>!r.da_loai);
@@ -3025,7 +3109,7 @@ function exportDoiTuongQuanLyExcel(list,toast){
     ];
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"DanhSachDoiTuong");
-    XLSX.writeFile(wb,`DanhSachDoiTuongQuanLy_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveWorkbookA4(wb,`DanhSachDoiTuongQuanLy_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
     toast(`✅ Đã xuất Excel ${list.length} đối tượng!`,"success");
   }catch(e){toast("❌ Lỗi xuất Excel: "+e.message,"error");}
 }
@@ -4038,9 +4122,10 @@ function computeStats(data,dr){
       }
       return true;
     }).length;
-    // Phát sinh mới trong kỳ
+    // Phát sinh mới trong kỳ — MỐC TÍNH LÀ "NGÀY VÀO SỔ" (trường ngay_vao_so).
+    // Chỉ khi bản ghi chưa có Ngày vào sổ mới lấy tạm "Thời gian phát sinh mới".
     const psList=list.filter(r=>{
-      const dt=r.thoi_gian_ps||r.ngay_vao_so;
+      const dt=r.ngay_vao_so||r.thoi_gian_ps;
       return from||to?_inRg(dt,from,to):!!_pd(dt);
     });
     const psMoi=psList.length;
@@ -4142,7 +4227,7 @@ function computeStats(data,dr){
   // Diện quản lý TB136 = toàn bộ đối tượng đang theo dõi (mọi nhóm), tính 1 lần/người
   const dtAll=all.filter(r=>!r.da_loai);
   const tb136DauKy=all.filter(r=>{
-    const vs=r.thoi_diem_dua_vao_ql||r.ngay_vao_so;
+    const vs=r.ngay_vao_so||r.thoi_diem_dua_vao_ql;
     const truocKy=from?(!_pd(vs)||_beforeFrom(vs,from)):(!_pd(vs));
     if(!truocKy)return false;
     if(r.da_loai){
@@ -4152,22 +4237,38 @@ function computeStats(data,dr){
     return true;
   }).length;
   const tb136Ps=all.filter(r=>{
-    const vs=r.thoi_diem_dua_vao_ql||r.thoi_gian_ps||r.ngay_vao_so;
+    const vs=r.ngay_vao_so||r.thoi_diem_dua_vao_ql||r.thoi_gian_ps;
     return from||to?_inRg(vs,from,to):!!_pd(vs);
   }).length;
   const tb136TlList=all.filter(r=>r.da_loai&&(from||to?_inRg(r.ngay_loai,from,to):true));
   const tb136Tl={tong:tb136TlList.length,khoi_to:0,xlhc:0,cai_bb:0,bo_di:0,tien_bo:0,khac:0};
   tb136TlList.forEach(r=>{tb136Tl[_tlBucket(r.ly_do_loai)]++;});
+  // Địa bàn hoạt động: đối tượng chưa ghi rõ địa bàn được tính là hoạt động
+  // TRONG địa bàn cấp xã (vì đang cư trú, chịu sự quản lý của Công an cấp xã),
+  // nhờ đó tổng 3 cột địa bàn luôn bằng số đối tượng đang quản lý.
   const db={trong_xa:0,lien_xa:0,lien_tinh:0};
-  dtAll.forEach(r=>{const b=_dbBucket(r.dia_ban_nghi_van||r.dia_ban_hd);if(b)db[b]++;});
-  let bpST=0,bpHN=0,bpCA=0;
+  dtAll.forEach(r=>{db[_dbBucket(r.dia_ban_nghi_van||r.dia_ban_hd)||"trong_xa"]++;});
+  // ── Đếm theo ĐÚNG MỤC (nhóm quản lý) trong ứng dụng ──
+  // Sưu tra / Nghi vấn / Sử dụng / Nghiện / Sau cai: lấy trực tiếp số bản ghi của mục đó.
+  // Hiềm nghi / Chuyên án: ứng dụng không có mục riêng nên nhận diện qua ô
+  // "Diện QL – Số hồ sơ NV" và "Đối sách, xử lý" của từng đối tượng.
+  const inNhom=id=>dtAll.filter(r=>(r.nhom||[]).includes(id)).length;
+  const nhomCount={
+    su_dung:inNhom("su_dung"),nghien:inNhom("nghien"),sau_cai:inNhom("sau_cai"),
+    vppl:inNhom("vppl"),nghi_van:inNhom("nghi_van"),suu_tra:inNhom("suu_tra"),
+  };
+  let bpHN=0,bpCA=0,stText=0;
   dtAll.forEach(r=>{
     const k=_nvKind(r);
-    if((r.nhom||[]).includes("suu_tra")||k.st)bpST++;
+    if(k.st&&!(r.nhom||[]).includes("suu_tra"))stText++;
     if(k.hn)bpHN++;
     if(k.ca)bpCA++;
   });
-  const bpPL=dtAll.filter(r=>(r.nhom||[]).some(n=>["su_dung","nghien","sau_cai"].includes(n))).length;
+  // Ưu tiên số bản ghi của mục "Đối tượng sưu tra"; nếu mục này chưa có dữ liệu
+  // thì lấy số đối tượng có ghi hồ sơ sưu tra ở ô Diện QL (để không bị thiếu).
+  const bpST=nhomCount.suu_tra>0?nhomCount.suu_tra:stText;
+  const bpPL=nhomCount.su_dung+nhomCount.nghien+nhomCount.sau_cai
+    -dtAll.filter(r=>{const n=r.nhom||[];return (n.includes("su_dung")&&n.includes("nghien"))||(n.includes("su_dung")&&n.includes("sau_cai"))||(n.includes("nghien")&&n.includes("sau_cai"));}).length;
   const tb136={
     so_dau_ky:tb136DauKy,ps_moi:tb136Ps,
     tl_tong:tb136Tl.tong,tl_khoi_to:tb136Tl.khoi_to,tl_xlhc:tb136Tl.xlhc,
@@ -4176,6 +4277,7 @@ function computeStats(data,dr){
     db_trong_xa:db.trong_xa,db_lien_xa:db.lien_xa,db_lien_tinh:db.lien_tinh,
     bp_theo_pl:bpPL,bp_suu_tra:bpST,bp_hiem_nghi_ca:bpHN+bpCA,
     bp_hiem_nghi:bpHN,bp_chuyen_an:bpCA,bp_khac:0,
+    bp_suu_tra_nhom:nhomCount.suu_tra,bp_suu_tra_ho_so:stText,
     thucTe:dtAll.length,
   };
 
@@ -4194,7 +4296,7 @@ function computeStats(data,dr){
     else bnTl.khac++;
   });
   const bnDb={trong_xa:0,lien_xa:0,lien_tinh:0};
-  bnAct.forEach(r=>{const b=_dbBucket(r.dia_ban_hd);if(b)bnDb[b]++;});
+  bnAct.forEach(r=>{bnDb[_dbBucket(r.dia_ban_hd)||"trong_xa"]++;});
   const bnDs={ca:0,hn:0,kh:0,khac:0};
   bnAct.forEach(r=>{
     const s=String(r.doi_sach||"").toLowerCase();
@@ -4296,8 +4398,12 @@ function computeStats(data,dr){
     from,to,
     period:(from&&to)?`Từ ngày ${fmtDate(from)} đến ngày ${fmtDate(to)}`:"Toàn bộ thời gian",
     sd,ng,sc,pm,noiO,b4,b5,b6,tb136,pl2,pl3,hd26,
-    suuTra:(data.suu_tra||[]).filter(r=>!r.da_loai).length,
-    nghiVan:(data.nghi_van||[]).filter(r=>!r.da_loai).length,
+    // Tổng số đối tượng ĐANG QUẢN LÝ trong phần mềm (mỗi người tính 1 lần, kể cả
+    // người thuộc nhiều diện) — dùng cho mục "Công an cấp xã quản lý, theo dõi".
+    tongDangQL:dtAll.length,
+    nhomCount,
+    suuTra:nhomCount.suu_tra,
+    nghiVan:nhomCount.nghi_van,
   };
 }
 
@@ -4319,6 +4425,10 @@ function validateStats(S){
   if(S.b6.nam+S.b6.nu>S.b6.so_dt)w.push(`B6 (Điều 256a): Nam + Nữ (${S.b6.nam+S.b6.nu}) lớn hơn tổng số đối tượng (${S.b6.so_dt}).`);
   if(S.pm.sd.nhap>S.pm.sd.tong||S.pm.ng.nhap>S.pm.ng.tong||S.pm.sc.nhap>S.pm.sc.tong)
     w.push("B3: số đã cập nhật phần mềm lớn hơn tổng số đang quản lý.");
+  const dbSum=S.tb136.db_trong_xa+S.tb136.db_lien_xa+S.tb136.db_lien_tinh;
+  if(dbSum!==S.tongDangQL)w.push(`TB136 PL1: tổng 3 cột địa bàn hoạt động (${dbSum}) khác tổng số đối tượng đang quản lý (${S.tongDangQL}).`);
+  if(S.tb136.bp_suu_tra_ho_so>S.tb136.bp_suu_tra_nhom&&S.tb136.bp_suu_tra_nhom>0)
+    w.push(`Sưu tra: mục "Đối tượng sưu tra" có ${S.tb136.bp_suu_tra_nhom} người, nhưng có thêm ${S.tb136.bp_suu_tra_ho_so} người ghi số hồ sơ sưu tra ở ô "Diện QL – Số hồ sơ NV" mà chưa gán vào mục Sưu tra. Báo cáo đang lấy theo mục Sưu tra.`);
   return w;
 }
 
@@ -4363,7 +4473,48 @@ function _ws8(aoa,o){
     else if(dFrom!==undefined&&R>=dFrom&&R<=dTo)ws["!rows"][R]={hpt:28};
     else ws["!rows"][R]={hpt:18};
   }
+  _setPrint(ws,rg.e.c+1,o);
   return ws;
+}
+// Thiết lập in ấn theo Nghị định 30/2020/NĐ-CP: khổ A4, lề trên/dưới 20mm,
+// lề trái 30mm, lề phải 15mm; biểu nhiều cột tự chuyển khổ ngang và co vừa 1 trang ngang.
+// Ghi workbook ra file kèm thiết lập trang in chuẩn A4 (thư viện xlsx không ghi
+// thẻ <pageSetup> nên chèn trực tiếp vào file xlsx bằng PizZip trước khi tải xuống).
+function saveWorkbookA4(wb,fileName){
+  try{
+    if(!window.PizZip)throw new Error("no-pizzip");
+    const out=XLSX.write(wb,{bookType:"xlsx",type:"array",cellStyles:true});
+    const zip=new window.PizZip(out);
+    Object.keys(zip.files).filter(f=>/^xl\/worksheets\/sheet\d+\.xml$/.test(f)).forEach(f=>{
+      let xml=zip.file(f).asText();
+      // Số cột của sheet → quyết định khổ dọc hay ngang
+      const dim=(xml.match(/<dimension ref="[A-Z]+\d+:([A-Z]+)\d+"/)||[])[1]||"H";
+      let nc=0;for(let i=0;i<dim.length;i++)nc=nc*26+(dim.charCodeAt(i)-64);
+      const land=nc>8;
+      if(xml.indexOf("<pageSetup")===-1){
+        const tag='<pageSetup paperSize="9" orientation="'+(land?"landscape":"portrait")+'" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>';
+        xml=xml.indexOf("<pageMargins")>=0
+          ? xml.replace(/(<pageMargins[^>]*\/>)/,"$1"+tag)
+          : xml.replace("</worksheet>",tag+"</worksheet>");
+      }
+      if(xml.indexOf("<sheetPr")===-1)
+        xml=xml.replace(/(<worksheet[^>]*>)/,'$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
+      zip.file(f,xml);
+    });
+    const blob=zip.generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download=fileName;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
+  }catch(e){
+    XLSX.writeFile(wb,fileName); // dự phòng: vẫn tải được file, chỉ thiếu thiết lập trang in
+  }
+}
+function _setPrint(ws,numCols,o){
+  const landscape=(o&&o.landscape!==undefined)?o.landscape:(numCols>8);
+  ws["!margins"]={left:landscape?0.79:1.18,right:0.59,top:0.79,bottom:0.79,header:0.31,footer:0.31};
+  ws["!pageSetup"]={paperSize:9,orientation:landscape?"landscape":"portrait",
+    scale:100,fitToWidth:1,fitToHeight:0,horizontalDpi:600,verticalDpi:600};
+  ws["!sheetPr"]={pageSetUpPr:{fitToPage:true}};
 }
 const _m=(r1,c1,r2,c2)=>({s:{r:r1,c:c1},e:{r:r2,c:c2}});
 const _cw=(n,def,map)=>Array.from({length:n},(_,i)=>({wch:(map&&map[i])||def}));
@@ -4788,15 +4939,50 @@ function bsHD26_BM1(S){
       _m(last+2,6,last+2,10),_m(last+3,1,last+3,2),_m(last+3,6,last+3,10)],
   });
 }
+// Tổng hợp số liệu BM2 – dùng chung cho xuất Excel và đồng bộ vào file mẫu
+function hd26IsBan(r){return /mua|bán/i.test(String(r.loai_hinh_hd26||""));}
+function hd26Tuoi(r){
+  const d=_pd(r.nam_sinh_hd26);if(!d)return"";
+  const a=new Date().getFullYear()-d.getFullYear();
+  return a<18?"u18":(a<=30?"u30":"o30");
+}
+function hd26Agg(S,f){
+  const list=S.hd26._all;
+  const tuoi=hd26Tuoi;
+  const L=list.filter(f);
+  const hs=L.filter(r=>r.xu_ly_hinh_su),hc=L.filter(r=>r.xu_ly_hanh_chinh);
+  const hv=re=>hs.filter(r=>re.test(String(r.hanh_vi_xl||""))).length;
+  const nv=(l,k)=>l.filter(r=>r[k]).length;
+  const tg=(l,t)=>l.filter(r=>tuoi(r)===t).length;
+  return{
+    tx:L.filter(r=>/triệt xóa/i.test(String(r.kq_giai_quyet||""))).length,
+    vh:L.filter(r=>/vô hiệu/i.test(String(r.kq_giai_quyet||""))).length,
+    tl:L.filter(r=>/không còn|thanh loại/i.test(String(r.kq_giai_quyet||""))).length,
+    hs_vu:_uniq(hs.map(r=>r.so_vu_lq||r.ho_ten_ten_diem)),hs_dt:hs.length,
+    tt:hv(/tàng trữ/i),mb:hv(/mua bán/i),tcsd:hv(/tổ chức/i),ccsd:hv(/chứa chấp/i),
+    khac:hv(/khác|vận chuyển/i),
+    hs_st:nv(hs,"ql_nv_st"),hs_hn:nv(hs,"ql_nv_hn"),hs_va:nv(hs,"ql_nv_va"),
+    hs_u18:tg(hs,"u18"),hs_u30:tg(hs,"u30"),hs_o30:tg(hs,"o30"),
+    hc_vu:_uniq(hc.map(r=>r.so_vu_lq||r.ho_ten_ten_diem)),hc_dt:hc.length,
+    hc_u18:tg(hc,"u18"),hc_u30:tg(hc,"u30"),hc_o30:tg(hc,"o30"),
+    hc_st:nv(hc,"ql_nv_st"),hc_hn:nv(hc,"ql_nv_hn"),hc_va:nv(hc,"ql_nv_va"),
+    dt:L.filter(r=>r.duong_tinh_hd26).length,
+    ta:L.filter(r=>r.tien_an_hd26).length,ts:L.filter(r=>r.tien_su_hd26).length,
+    gc:L.filter(r=>r.dien_giam_cau).length,
+  };
+}
+// 28 giá trị từ cột C (TS đã đấu tranh giải quyết) đến cột AD (diện giảm cầu)
+function hd26Bm2Vals(a){
+  return[a.tx,a.vh,a.tl,a.hs_vu,a.hs_dt,a.tt,a.mb,a.tcsd,a.ccsd,a.khac,
+    a.hs_st,a.hs_hn,a.hs_va,a.hs_u18,a.hs_u30,a.hs_o30,
+    a.hc_vu,a.hc_dt,a.hc_u18,a.hc_u30,a.hc_o30,a.hc_st,a.hc_hn,a.hc_va,
+    a.dt,a.ta,a.ts,a.gc];
+}
 function bsHD26_BM2(S){
   const NC=30;
   const list=S.hd26._all;
-  const isBan=r=>/mua|bán/i.test(String(r.loai_hinh_hd26||""));
-  const tuoi=r=>{
-    const d=_pd(r.nam_sinh_hd26);if(!d)return"";
-    const a=new Date().getFullYear()-d.getFullYear();
-    return a<18?"u18":(a<=30?"u30":"o30");
-  };
+  const isBan=hd26IsBan;
+  const tuoi=hd26Tuoi;
   function agg(f){
     const L=list.filter(f);
     const hs=L.filter(r=>r.xu_ly_hinh_su),hc=L.filter(r=>r.xu_ly_hanh_chinh);
@@ -4820,10 +5006,7 @@ function bsHD26_BM2(S){
       gc:L.filter(r=>r.dien_giam_cau).length,
     };
   }
-  const line=(stt,lbl,a)=>[stt,lbl,a.tx,a.vh,a.tl,a.hs_vu,a.hs_dt,a.tt,a.mb,a.tcsd,a.ccsd,a.khac,
-    a.hs_st,a.hs_hn,a.hs_va,a.hs_u18,a.hs_u30,a.hs_o30,
-    a.hc_vu,a.hc_dt,a.hc_u18,a.hc_u30,a.hc_o30,a.hc_st,a.hc_hn,a.hc_va,
-    a.dt,a.ta,a.ts,a.gc];
+  const line=(stt,lbl,a)=>[stt,lbl,...hd26Bm2Vals(a)];
   const today=new Date();
   const aoa=[
     _row(NC,{0:CONFIG.capTren.toUpperCase(),11:"CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM"}),
@@ -4968,41 +5151,91 @@ function bsQD28_VPPL(S,records){
 // XUẤT BÁO CÁO WORD (.doc mở trực tiếp bằng MS Word, khổ A4, Times New Roman 14)
 // ══════════════════════════════════════════════════════════════════════════
 function _wEsc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+// ══════════════════════════════════════════════════════════════════════
+// THỂ THỨC VĂN BẢN THEO NGHỊ ĐỊNH 30/2020/NĐ-CP (v8.3)
+//  • Khổ A4, lề: trên 20mm, dưới 20mm, trái 30mm, phải 15mm
+//  • Phông Times New Roman; nội dung cỡ 14; dãn dòng 1,5; cách đoạn 6pt;
+//    lùi đầu dòng 1cm
+//  • Cỡ chữ theo từng thành phần thể thức (Điều 8 và Phụ lục I NĐ 30):
+//      - Tên cơ quan chủ quản: 12, in hoa, không đậm
+//      - Tên cơ quan ban hành: 12, in hoa, đậm, có đường kẻ ngang bên dưới
+//      - Quốc hiệu: 12, in hoa, đậm; Tiêu ngữ: 13, đậm, có đường kẻ ngang
+//      - Số, ký hiệu: 13; Địa danh, ngày tháng: 14, in nghiêng
+//      - Tên loại văn bản: 14, in hoa, đậm; Trích yếu: 14, đậm, kẻ ngang bên dưới
+//      - Chức vụ người ký: 14, in hoa, đậm; Họ tên người ký: 14, đậm
+//      - Nơi nhận: chữ "Nơi nhận" 12 đậm nghiêng; nội dung 11
+//  • Số trang đặt ở giữa lề trên, cỡ 13-14 (chèn bằng trường PAGE của Word)
+// ══════════════════════════════════════════════════════════════════════
 function _wDownload(bodyHtml,fileName){
   const head='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'+
     '<head><meta charset="utf-8"><title>Bao cao</title>'+
     '<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->'+
-    '<style>@page WordSection1{size:21cm 29.7cm;margin:2cm 2cm 2cm 3cm;} div.WordSection1{page:WordSection1;}'+
-    'body,p,td,div{font-family:"Times New Roman",serif;font-size:14.0pt;line-height:1.4;}'+
-    'p{margin:0 0 6.0pt 0;text-align:justify;text-indent:0;}'+
-    '.c{text-align:center;} .b{font-weight:bold;} .i{font-style:italic;} .ind{text-indent:1.0cm;}'+
-    'table{border-collapse:collapse;} td{vertical-align:top;padding:0 4pt;}'+
-    '</style></head><body><div class="WordSection1">';
+    '<style>'+
+    '@page WordSection1{size:21.0cm 29.7cm;mso-page-orientation:portrait;'+
+      'margin:2.0cm 1.5cm 2.0cm 3.0cm;mso-header-margin:1.0cm;mso-footer-margin:1.0cm;'+
+      'mso-header:url("#hdr") h1;}'+
+    'div.WordSection1{page:WordSection1;}'+
+    'body,p,td,div{font-family:"Times New Roman",serif;font-size:14.0pt;line-height:150%;}'+
+    'p{margin:0cm 0cm 6.0pt 0cm;text-align:justify;}'+
+    'p.ind{text-indent:1.0cm;}'+
+    '.c{text-align:center;} .b{font-weight:bold;} .i{font-style:italic;}'+
+    'table{border-collapse:collapse;} td{vertical-align:top;padding:0cm;}'+
+    'p.MsoHeader{text-align:center;font-size:13.0pt;margin:0cm;}'+
+    '</style></head><body>'+
+    // Header chứa số trang – Word sẽ tự đánh số từ trang 2 nhờ trường PAGE
+    '<div style="mso-element:header" id="hdr"><p class="MsoHeader">'+
+      '<!--[if supportFields]><span style="mso-element:field-begin"></span>PAGE<span style="mso-element:field-separator"></span><![endif]-->'+
+      '<!--[if supportFields]><span style="mso-element:field-end"></span><![endif]--></p></div>'+
+    '<div class="WordSection1">';
   const blob=new Blob(["\ufeff",head,bodyHtml,"</div></body></html>"],{type:"application/msword;charset=utf-8"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download=fileName;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
 }
-function _wHeader(soBC){
+// Khối thể thức đầu văn bản: cơ quan ban hành – quốc hiệu, tiêu ngữ – số, ký hiệu – địa danh, ngày tháng
+function _wHeader(soBC,kyHieu){
   const d=new Date();
-  return'<table style="width:100%"><tr>'+
-    '<td style="width:45%;text-align:center"><p class="b" style="font-size:13pt;margin:0">'+_wEsc(CONFIG.capTren.toUpperCase())+'</p>'+
-    '<p class="b" style="font-size:13pt;margin:0">'+_wEsc(CONFIG.donVi.toUpperCase())+'</p>'+
-    '<p style="margin:0">______________</p>'+
-    '<p style="margin:0;font-size:13pt">Số: ………… /BC-…………</p></td>'+
-    '<td style="width:55%;text-align:center"><p class="b" style="font-size:13pt;margin:0">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>'+
-    '<p class="b" style="margin:0">Độc lập – Tự do – Hạnh phúc</p>'+
-    '<p style="margin:0">_______________________</p>'+
-    '<p class="i" style="margin:0;font-size:13pt">'+_wEsc(CONFIG.quanHuyen)+', ngày '+n2(d.getDate())+' tháng '+n2(d.getMonth()+1)+' năm '+d.getFullYear()+'</p></td>'+
-    '</tr></table><p>&nbsp;</p>';
+  const line='<p class="c" style="margin:0;line-height:100%"><span style="font-size:1.0pt">&nbsp;</span></p>';
+  const hr=(w)=>'<table style="width:'+w+';margin-left:auto;margin-right:auto"><tr><td style="border-bottom:1.0pt solid black;padding:0"></td></tr></table>';
+  return'<table style="width:100%;margin-bottom:6.0pt"><tr>'+
+    // Ô trái: tên cơ quan chủ quản + cơ quan ban hành + số, ký hiệu
+    '<td style="width:44%;text-align:center">'+
+      '<p class="c" style="margin:0;line-height:120%;font-size:12.0pt">'+_wEsc(String(CONFIG.capTren||"").toUpperCase())+'</p>'+
+      '<p class="c b" style="margin:0;line-height:120%;font-size:12.0pt">'+_wEsc(String(CONFIG.donVi||"").toUpperCase())+'</p>'+
+      hr("45%")+
+      '<p class="c" style="margin:6.0pt 0 0 0;line-height:120%;font-size:13.0pt">Số: '+_wEsc(soBC||"………")+'/BC-'+_wEsc(kyHieu||"CAP")+'</p>'+
+    '</td>'+
+    // Ô phải: quốc hiệu, tiêu ngữ, địa danh và ngày tháng năm
+    '<td style="width:56%;text-align:center">'+
+      '<p class="c b" style="margin:0;line-height:120%;font-size:12.0pt">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>'+
+      '<p class="c b" style="margin:0;line-height:120%;font-size:13.0pt">Độc lập - Tự do - Hạnh phúc</p>'+
+      hr("62%")+
+      '<p class="c i" style="margin:6.0pt 0 0 0;line-height:120%;font-size:14.0pt">'+
+        _wEsc(CONFIG.quanHuyen)+', ngày '+n2(d.getDate())+' tháng '+n2(d.getMonth()+1)+' năm '+d.getFullYear()+'</p>'+
+    '</td></tr></table>';
 }
-function _wFooter(chucDanh){
-  return'<p>&nbsp;</p><table style="width:100%"><tr>'+
-    '<td style="width:50%"><p class="b i" style="margin:0;font-size:12pt">Nơi nhận:</p>'+
-    '<p style="margin:0;font-size:12pt">- Phòng PV01, PC04 (để báo cáo);</p>'+
-    '<p style="margin:0;font-size:12pt">- Lưu: VT, CAP-PCTP.</p></td>'+
-    '<td style="width:50%;text-align:center"><p class="b" style="margin:0">'+_wEsc(chucDanh)+'</p></td>'+
-    '</tr></table>';
+// Tên loại văn bản + trích yếu nội dung (Điều 8 khoản 5 NĐ 30)
+function _wTitle(tenLoai,trichYeu){
+  return'<p class="c b" style="margin:12.0pt 0 0 0;line-height:120%;font-size:14.0pt">'+_wEsc(tenLoai)+'</p>'+
+    '<p class="c b" style="margin:0;line-height:130%;font-size:14.0pt">'+trichYeu+'</p>'+
+    '<table style="width:22%;margin-left:auto;margin-right:auto;margin-top:2.0pt"><tr>'+
+      '<td style="border-bottom:1.0pt solid black;padding:0"></td></tr></table>'+
+    '<p style="margin:0 0 6.0pt 0">&nbsp;</p>';
+}
+// Khối "Nơi nhận" và quyền hạn, chức vụ người ký (Điều 8 khoản 7, 9 NĐ 30)
+function _wFooter(chucDanh,noiNhan){
+  const dsNhan=(noiNhan&&noiNhan.length?noiNhan:["Phòng PC04, PV01 Công an Thành phố (để báo cáo);","Đảng ủy, UBND phường (để báo cáo);","Lưu: VT."]);
+  return'<p style="margin:6.0pt 0">&nbsp;</p><table style="width:100%"><tr>'+
+    '<td style="width:52%">'+
+      '<p class="b i" style="margin:0;line-height:120%;font-size:12.0pt">Nơi nhận:</p>'+
+      dsNhan.map(x=>'<p style="margin:0;line-height:120%;font-size:11.0pt">- '+_wEsc(x)+'</p>').join("")+
+    '</td>'+
+    '<td style="width:48%;text-align:center">'+
+      '<p class="c b" style="margin:0;line-height:120%;font-size:14.0pt">'+_wEsc(chucDanh)+'</p>'+
+      '<p class="c i" style="margin:0;line-height:120%;font-size:12.0pt">(Ký, ghi rõ họ tên, đóng dấu)</p>'+
+      '<p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p><p style="margin:0">&nbsp;</p>'+
+      '<p class="c b" style="margin:0;line-height:120%;font-size:14.0pt">&nbsp;</p>'+
+    '</td></tr></table>';
 }
 const _p=(t,cls)=>'<p'+(cls?' class="'+cls+'"':'')+'>'+t+'</p>';
 
@@ -5017,13 +5250,18 @@ function exportWordHD26(data,dr,toast){
     const d=new Date();
     const thang=S.to?(_pd(S.to).getMonth()+1):(d.getMonth()+1);
     const nam=S.to?_pd(S.to).getFullYear():d.getFullYear();
+    // Số liệu diện quản lý lấy đúng theo từng MỤC trong ứng dụng:
+    //  - Sưu tra: mục "Đối tượng sưu tra về ma túy"
+    //  - Hiềm nghi / Chuyên án: ô "Diện QL – Số hồ sơ NV" và "Đối sách, xử lý"
+    //  - Giảm cầu: các mục Người sử dụng + Người nghiện + Quản lý sau cai (mỗi người 1 lần)
     const nvST=S.tb136.bp_suu_tra,nvHN=S.tb136.bp_hiem_nghi,nvCA=S.tb136.bp_chuyen_an;
-    const giamCau=S.sd.thucTe+S.ng.thucTe+S.sc.thucTe;
-    let b=_wHeader();
-    b+=_p('<span class="b" style="font-size:15pt">BÁO CÁO</span>','c');
-    b+=_p('<span class="b">Tình hình, kết quả công tác rà soát, đấu tranh, giải quyết đối tượng mua bán, điểm tổ chức chứa chấp sử dụng trái phép chất ma túy trên địa bàn '+_wEsc(CONFIG.donVi.replace(/^Công an /i,"").toUpperCase())+' tháng '+n2(thang)+'/'+nam+'</span>','c');
-    b+=_p('<span class="i">'+_wEsc(_kyText(S))+'</span>','c');
-    b+=_p('_______________','c');
+    const giamCau=S.tb136.bp_theo_pl;
+    const nc=S.nhomCount;
+    let b=_wHeader("","CAP");
+    b+=_wTitle("BÁO CÁO",
+      'Tình hình, kết quả công tác rà soát, đấu tranh, giải quyết đối tượng mua bán,<br/>'+
+      'điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy trên địa bàn<br/>'+
+      _wEsc(CONFIG.donVi.replace(/^Công an /i,""))+' tháng '+n2(thang)+' năm '+nam);
     b+=_p('Thực hiện Hướng dẫn số 26/HD-BCA-C04 ngày 29/4/2025 của Bộ Công an về công tác rà soát, phát hiện, quản lý, xử lý người sử dụng trái phép chất ma túy, người nghiện ma túy, người bị quản lý sau cai, đối tượng mua, bán trái phép chất ma túy và điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy (sau đây gọi là Hướng dẫn số 26); Kế hoạch số 218/KH-CATP-PC04 ngày 16/7/2025 về triển khai thực hiện Hướng dẫn 26, đơn vị '+_wEsc(CONFIG.donVi)+', '+_wEsc(CONFIG.capTren)+' báo cáo kết quả như sau:','ind');
     b+=_p('<span class="b">I. Tình hình triển khai thực hiện Hướng dẫn số 26</span>');
     b+=_p('<span class="b">1. Công tác tham mưu chỉ đạo</span>');
@@ -5042,7 +5280,7 @@ function exportWordHD26(data,dr,toast){
     b+=_p('+ Triệt xoá: '+v("dt_ban_triet_xoa")+' đối tượng.','ind');
     b+=_p('+ Vô hiệu hoá: '+v("dt_ban_vo_hieu")+' đối tượng.','ind');
     b+=_p('+ Tự thanh loại (không còn biểu hiện hoạt động, đối tượng chết, bỏ đi nơi khác…): '+v("dt_ban_khong_bh")+' đối tượng.','ind');
-    b+=_p('- Số đối tượng thuộc diện quản lý pháp luật quản lý giảm cầu (người chấp hành xong án phạt tù, người được đặc xá, người nghiện, người sử dụng và người bị quản lý sau cai…): '+n2(giamCau)+' đối tượng.','ind');
+    b+=_p('- Số đối tượng thuộc diện quản lý pháp luật quản lý giảm cầu (người chấp hành xong án phạt tù, người được đặc xá, người nghiện, người sử dụng và người bị quản lý sau cai…): '+n2(giamCau)+' đối tượng (người sử dụng trái phép chất ma túy: '+n2(nc.su_dung)+'; người nghiện: '+n2(nc.nghien)+'; người bị quản lý sau cai: '+n2(nc.sau_cai)+').','ind');
     b+=_p('+ Số đối tượng dương tính với ma túy: '+n2(S.b4.duong_tinh)+' đối tượng.','ind');
     b+=_p('- Số đối tượng quản lý theo nghiệp vụ: '+n2(nvST+nvHN+nvCA)+' đối tượng (sưu tra: '+n2(nvST)+' đối tượng; hiềm nghi: '+n2(nvHN)+' đối tượng; chuyên án: '+n2(nvCA)+' đối tượng).','ind');
     b+=_p('<span class="b">1.2. Điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy</span>');
@@ -5083,7 +5321,8 @@ function exportWordHD26(data,dr,toast){
     b+=_p('- Tiếp tục thực hiện dữ liệu số; cập nhật, khai thác dữ liệu người sử dụng trái phép chất ma túy, người nghiện ma túy, người bị quản lý sau cai nghiện ma túy tại phần mềm quản lý đối tượng (hiện đã cập nhật: người sử dụng '+n2(S.pm.sd.nhap)+'/'+n2(S.pm.sd.tong)+', người nghiện '+n2(S.pm.ng.nhap)+'/'+n2(S.pm.ng.tong)+', sau cai '+n2(S.pm.sc.nhap)+'/'+n2(S.pm.sc.tong)+').','ind');
     b+=_p('- Tên, số điện thoại cán bộ phụ trách báo cáo: …………………………','ind');
     b+=_p('Trên đây là báo cáo kết quả thực hiện Hướng dẫn 26 tháng '+n2(thang)+'/'+nam+' của '+_wEsc(CONFIG.donVi)+', '+_wEsc(CONFIG.capTren)+'./.','ind');
-    b+=_wFooter("TRƯỞNG ĐƠN VỊ");
+    b+=_wFooter("TRƯỞNG CÔNG AN PHƯỜNG",
+      ["Phòng PC04 Công an Thành phố (để báo cáo);","Đảng ủy, UBND phường (để báo cáo);","Lưu: VT, ANPCTP."]);
     _wDownload(b,`BC_HD26_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.doc`);
     if(toast)toast("✅ Đã xuất báo cáo Word theo Hướng dẫn 26","success");
   }catch(e){if(toast)toast("❌ Lỗi xuất Word HD26: "+e.message,"error");else console.error(e);}
@@ -5102,11 +5341,11 @@ function exportWordTB136(data,dr,toast){
     const nam=S.to?_pd(S.to).getFullYear():d.getFullYear();
     const hienQL=pkv(t.so_dau_ky,T.so_dau_ky)+pkv(t.ps_moi,T.ps_moi)-pkv(t.tl_tong,T.tl_tong);
     const bnHien=pkv(p2.bn_dau_ky,P2.bn_dau_ky)+pkv(p2.bn_ps_moi,P2.bn_ps_moi)-pkv(p2.bn_tl_tong,P2.bn_tl_tong);
-    let b=_wHeader();
-    b+=_p('<span class="b" style="font-size:15pt">BÁO CÁO</span>','c');
-    b+=_p('<span class="b">Kết quả rà soát lập danh sách băng nhóm, đối tượng trong diện quản lý liên quan đến ma túy; các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy trên địa bàn '+_wEsc(CONFIG.donVi.replace(/^Công an /i,""))+' tháng '+n2(thang)+'/'+nam+'</span>','c');
-    b+=_p('<span class="i">'+_wEsc(_kyText(S))+'</span>','c');
-    b+=_p('_______________','c');
+    let b=_wHeader("","CAP");
+    b+=_wTitle("BÁO CÁO",
+      'Kết quả rà soát, lập danh sách băng nhóm, đối tượng trong diện quản lý liên quan đến ma túy;<br/>'+
+      'các điểm tổ chức, chứa chấp sử dụng trái phép chất ma túy trên địa bàn<br/>'+
+      _wEsc(CONFIG.donVi.replace(/^Công an /i,""))+' tháng '+n2(thang)+' năm '+nam);
     b+=_p('Thực hiện Thông báo số 136/TB-CATP ngày 10/7/2025 của Công an Thành phố về việc phân công, phân cấp và tổ chức thực hiện công tác rà soát, lập danh sách các băng nhóm, đối tượng nghi vấn hoạt động phạm tội; các điểm, tụ điểm phức tạp về hình sự, ma túy, kinh tế, môi trường trên địa bàn Thành phố, '+_wEsc(CONFIG.donVi)+' báo cáo kết quả rà soát như sau:','ind');
     b+=_p('<span class="b">I. CÔNG TÁC THAM MƯU, TRIỂN KHAI</span>');
     b+=_p('- '+_wEsc(CONFIG.donVi)+' đã xây dựng kế hoạch và triển khai thực hiện theo Thông báo số 136/TB-CATP ngày 10/7/2025 của Công an Thành phố.','ind');
@@ -5120,11 +5359,13 @@ function exportWordTB136(data,dr,toast){
     b+=_p('- '+v(t.tl_bo_di,T.tl_bo_di)+' đối tượng bỏ đi khỏi nơi cư trú.','ind');
     b+=_p('- '+v(t.tl_tien_bo,T.tl_tien_bo)+' đối tượng tiến bộ hoặc chết.','ind');
     b+=_p('- '+v(t.tl_khac,T.tl_khac)+' đối tượng xử lý khác.','ind');
-    b+=_p('Hiện đang tiếp tục quản lý, xác minh, đấu tranh với '+n2(hienQL)+' đối tượng.','ind');
+    b+=_p('Hiện đang tiếp tục quản lý, xác minh, đấu tranh với '+n2(hienQL)+' đối tượng (số đối tượng hiện có trong phần mềm quản lý: '+n2(S.tongDangQL)+').','ind');
     b+=_p('1.2. Phân tích đối tượng đang quản lý:','ind');
+    const nc=S.nhomCount,tongQL=S.tongDangQL;
     b+=_p('- Địa bàn hoạt động: trong địa bàn cấp xã '+v(t.db_trong_xa,T.db_trong_xa)+' đối tượng; liên địa bàn cấp xã '+v(t.db_lien_xa,T.db_lien_xa)+' đối tượng; liên tỉnh '+v(t.db_lien_tinh,T.db_lien_tinh)+' đối tượng.','ind');
-    b+=_p('- Cấp quản lý: Công an cấp xã quản lý '+n2(hienQL)+' đối tượng.','ind');
-    b+=_p('- Biện pháp quản lý, đấu tranh: đưa vào sưu tra '+v(t.bp_suu_tra,T.bp_suu_tra)+' đối tượng; hiềm nghi '+n2(T.bp_hiem_nghi)+' đối tượng; chuyên án '+n2(T.bp_chuyen_an)+' đối tượng; quản lý theo pháp luật '+v(t.bp_theo_pl,T.bp_theo_pl)+' đối tượng; đưa vào danh sách theo dõi '+n2(hienQL)+' đối tượng.','ind');
+    // "Công an cấp xã quản lý, theo dõi" = TỔNG SỐ ĐỐI TƯỢNG ĐANG QUẢN LÝ trong phần mềm
+    b+=_p('- Cấp quản lý: Phòng nghiệp vụ quản lý 00 đối tượng; Công an cấp xã quản lý, theo dõi '+n2(tongQL)+' đối tượng.','ind');
+    b+=_p('- Biện pháp quản lý, đấu tranh: đưa vào sưu tra '+v(t.bp_suu_tra,T.bp_suu_tra)+' đối tượng; hiềm nghi '+n2(T.bp_hiem_nghi)+' đối tượng; chuyên án '+n2(T.bp_chuyen_an)+' đối tượng; quản lý theo pháp luật (giảm cầu) '+v(t.bp_theo_pl,T.bp_theo_pl)+' đối tượng, trong đó người sử dụng trái phép chất ma túy '+n2(nc.su_dung)+', người nghiện '+n2(nc.nghien)+', người bị quản lý sau cai '+n2(nc.sau_cai)+'; đối tượng nghi vấn '+n2(nc.nghi_van)+'; đưa vào danh sách theo dõi '+n2(tongQL)+' đối tượng.','ind');
     b+=_p('<span class="b">2. Kết quả công tác rà soát, lên danh sách, đấu tranh, xử lý các băng nhóm nghi vấn hoạt động phạm tội</span>');
     b+=_p('2.1. Qua rà soát, '+_wEsc(CONFIG.donVi)+' đã lên danh sách '+v(p2.bn_ps_moi,P2.bn_ps_moi)+' băng nhóm; nâng tổng số băng nhóm thuộc diện quản lý lên '+n2(bnHien)+' (đầu kỳ chuyển sang '+v(p2.bn_dau_ky,P2.bn_dau_ky)+' băng nhóm). Qua đấu tranh, xử lý đã:','ind');
     b+=_p('- Khởi tố: '+v(p2.bn_tl_khoi_to,P2.bn_tl_khoi_to)+' vụ.','ind');
@@ -5148,7 +5389,8 @@ function exportWordTB136(data,dr,toast){
     b+=_p('<span class="b">2. Tồn tại, hạn chế; khó khăn, vướng mắc:</span> ……………………………','ind');
     b+=_p('<span class="b">3. Kiến nghị, đề xuất:</span> ………………………………………………','ind');
     b+=_p('Trên đây là báo cáo kết quả thực hiện Thông báo 136/TB-CATP '+_wEsc(_kyText(S).replace(/[()]/g,""))+' của '+_wEsc(CONFIG.donVi)+'./.','ind');
-    b+=_wFooter("TRƯỞNG CÔNG AN PHƯỜNG");
+    b+=_wFooter("TRƯỞNG CÔNG AN PHƯỜNG",
+      ["Phòng PC02, PC04 Công an Thành phố (để báo cáo);","Đảng ủy, UBND phường (để báo cáo);","Lưu: VT, ANPCTP."]);
     _wDownload(b,`BC_TB136_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.doc`);
     if(toast)toast("✅ Đã xuất báo cáo Word theo Thông báo 136","success");
   }catch(e){if(toast)toast("❌ Lỗi xuất Word TB136: "+e.message,"error");else console.error(e);}
@@ -5163,7 +5405,7 @@ function exportBC807Tuan(data,dr,toast){
     XLSX.utils.book_append_sheet(wb,bs807W_B5(S,data),"B5");
     XLSX.utils.book_append_sheet(wb,bs807W_B6(S,data),"B6");
     XLSX.utils.book_append_sheet(wb,bs807W_B7(S,data),"B7");
-    XLSX.writeFile(wb,`BC_TUAN_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveWorkbookA4(wb,`BC_TUAN_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
     _warnStats(S,toast);
   }catch(e){if(toast)toast("❌ Lỗi xuất BC tuần: "+e.message,"error");else console.error(e);}
 }
@@ -5174,7 +5416,7 @@ function exportBC483Thang(data,dr,toast){
     A(bs807M_B1(S),"B1");A(bs807M_B2(S),"B2");A(bs807M_B3(S),"B3");A(bs807M_B3_1(S),"B3-1");
     A(bs807M_B4(S,data),"B4");A(bs807M_B4_1(S),"B4 -1");A(bs807M_B5(S,data),"B5");A(bs807M_B5_1(S),"B5-1");
     A(bs807M_B6(S,data),"B6");A(bs807M_B6_1(S),"B6-1");A(bs807M_B7(S,data),"B7");A(bs807M_B8(S,data),"B8");
-    XLSX.writeFile(wb,`BC_THANG_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveWorkbookA4(wb,`BC_THANG_483_theo_TB807_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
     _warnStats(S,toast);
   }catch(e){if(toast)toast("❌ Lỗi xuất BC tháng: "+e.message,"error");else console.error(e);}
 }
@@ -5376,7 +5618,7 @@ function doExport(type,data,dr){
     tb807:"BC_TUAN_483_theo_TB807",bc_thang:"BC_THANG_483_theo_TB807",tb136:"BC_TB136",hd26:"BC_HD26",qd28:"QD28_Phat_sinh_moi",
     mau_ra_soat:"Mau_Ra_Soat_DB_Khong_MT",
   };
-  XLSX.writeFile(wb,`${CONFIG.donVi.replace(/\s+/g,"_")}_${nm[type]||type}_${dt}.xlsx`);
+  saveWorkbookA4(wb,`${CONFIG.donVi.replace(/\s+/g,"_")}_${nm[type]||type}_${dt}.xlsx`);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -5937,8 +6179,13 @@ function EditPwdModal({onConfirm,onClose}){
   const [showPwd,setShowPwd]=useState(false);
   const [err,setErr]=useState("");
   const check=()=>{
-    if(pwd!==getAdminPwd()){setErr("Mật khẩu không đúng");setPwd("");return;}
-    onConfirm();
+    verifyAdminPwd(pwd).then(res=>{
+      if(!res.ok){
+        setErr(res.lockedFor>0?`Sai quá nhiều lần – thử lại sau ${res.lockedFor} giây`:"Mật khẩu không đúng");
+        setPwd("");return;
+      }
+      onConfirm();
+    }).catch(()=>setErr("Không kiểm tra được mật khẩu"));
   };
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
@@ -5971,22 +6218,79 @@ function EditPwdModal({onConfirm,onClose}){
 }
 
 // ── Smart FormModal ──────────────────────────────────────────
-function FormModal({fields,initial,title,onSave,onClose}){
+function FormModal({fields,initial,title,onSave,onClose,allRecords,khuPhoList}){
   const [data,setData]=useState(()=>{
     const base={};
     fields.forEach(f=>{base[f.k]=f.def!=null?f.def:(f.type==="bool"?false:"");base[f.k+"_other"]="";});
-    return initial?{...base,...initial}:base;
+    if(initial)return{...base,...initial};
+    // ── Giá trị mặc định thông minh cho bản ghi mới ──
+    const today=new Date().toISOString().slice(0,10);
+    if(Object.prototype.hasOwnProperty.call(base,"ngay_vao_so"))base.ngay_vao_so=today;
+    if(Object.prototype.hasOwnProperty.call(base,"phuong_xa")&&!base.phuong_xa)
+      base.phuong_xa=String(CONFIG.donVi||"").replace(/^Công an\s*(phường|xã|thị trấn)\s*/i,"").trim();
+    if(Object.prototype.hasOwnProperty.call(base,"quan_huyen")&&!base.quan_huyen)base.quan_huyen=CONFIG.quanHuyen;
+    if(Object.prototype.hasOwnProperty.call(base,"co_mat"))base.co_mat=true;
+    return base;
   });
   const [errors,setErrors]=useState({});
+  const [warns,setWarns]=useState({});
   const [activeGrpIdx,setActiveGrpIdx]=useState(0);
   const [dirty,setDirty]=useState(false);
+  const [search,setSearch]=useState("");
+  const [viewMode,setViewMode]=useState("all"); // all | empty | filled | req
   const ref=useRef();
   const bodyRef=useRef();
   const {style:dragStyle,dragHandleProps}=useDraggableModal();
 
+  // ── Kiểm tra thông minh từng trường ngay khi nhập ──
+  const smartCheck=(k,v,cur)=>{
+    const e={},w={};
+    const digits=x=>String(x||"").replace(/\D/g,"");
+    if(k==="cccd"&&v){
+      const d=digits(v);
+      if(d.length&&d.length!==9&&d.length!==12)e.cccd="Số CCCD/CMND phải có 9 hoặc 12 chữ số";
+      else if(d.length===12&&Array.isArray(allRecords)){
+        const trung=allRecords.find(r=>r._id!==(initial&&initial._id)&&digits(r.cccd)===d);
+        if(trung)w.cccd="⚠️ Trùng CCCD với bản ghi: "+(trung.ho_ten||"(không tên)");
+      }
+    }
+    if(k==="sdt"&&v){
+      const d=digits(v);
+      if(d.length&&(d.length<9||d.length>11))e.sdt="Số điện thoại không hợp lệ";
+    }
+    if(k==="ngay_sinh"&&v){
+      const d=_pd(v);
+      if(d&&d>new Date())e.ngay_sinh="Ngày sinh không thể ở tương lai";
+      else if(d&&new Date().getFullYear()-d.getFullYear()>110)e.ngay_sinh="Năm sinh không hợp lý";
+    }
+    if(k==="ngay_vao_so"&&v){
+      const d=_pd(v);
+      if(d&&d>new Date())w.ngay_vao_so="⚠️ Ngày vào sổ ở tương lai – kiểm tra lại vì đây là mốc tính tăng/giảm của báo cáo";
+    }
+    if((k==="ngay_loai"||k==="ngay_vao_so")&&cur.ngay_loai&&cur.ngay_vao_so){
+      const a=_pd(k==="ngay_vao_so"?v:cur.ngay_vao_so),b=_pd(k==="ngay_loai"?v:cur.ngay_loai);
+      if(a&&b&&b<a)e[k]="Ngày loại phải sau ngày vào sổ";
+    }
+    return{e,w};
+  };
   const set=(k,v)=>{
     setData(p=>{
       const next={...p,[k]:v};
+      // Chuẩn hóa họ tên: bỏ khoảng trắng thừa, viết hoa chữ đầu mỗi từ
+      if(k==="ho_ten"&&typeof v==="string")
+        next[k]=v.replace(/\s+/g," ").replace(/(^|\s)(\S)/g,(m,a,b)=>a+b.toLocaleUpperCase("vi"));
+      // Gợi ý khu phố từ địa chỉ nếu chưa chọn
+      if((k==="hktt"||k==="noi_o_ht")&&!p.khu_pho_moi){
+        const ds=Array.isArray(khuPhoList)&&khuPhoList.length
+          ? khuPhoList.map(kp=>kp.ten_moi||kp.ten_cu||"")
+          : (OPT.khuPhoMoi||[]);
+        const addr=stripDiacriticsVN(String(v||"")).toLowerCase();
+        const hit=ds.find(ten=>{
+          const t=stripDiacriticsVN(ten||"").toLowerCase().trim();
+          return t.length>=3&&addr.includes(t);
+        });
+        if(hit)next.khu_pho_moi=hit;
+      }
       if(k==="ngay_goi_hoi"){
         const count=v?v.split(",").filter(d=>d.trim()).length:0;
         next["so_luot_goi_hoi"]=String(count);
@@ -5998,8 +6302,12 @@ function FormModal({fields,initial,title,onSave,onClose}){
       return next;
     });
     setDirty(true);
-    if(errors[k])setErrors(p=>{const e={...p};delete e[k];return e;});
+    const{e,w}=smartCheck(k,v,data);
+    setErrors(p=>{const n={...p};delete n[k];if(e[k])n[k]=e[k];return n;});
+    setWarns(p=>{const n={...p};delete n[k];if(w[k])n[k]=w[k];return n;});
   };
+  // Sao chép nhanh HKTT sang Nơi ở hiện tại
+  const copyHktt=()=>{if(data.hktt)set("noi_o_ht",data.hktt);};
   // Derive which nhom are selected (for F_UNIFIED filtering)
   const selectedNhom=Array.isArray(data.nhom)?data.nhom:[];
 
@@ -6019,7 +6327,10 @@ function FormModal({fields,initial,title,onSave,onClose}){
   const safeIdx=Math.min(activeGrpIdx,Math.max(0,groups.length-1));
   const isMultiGroup=groups.length>3;
   const activeGrp=groups[safeIdx]||groups[0];
-  const visibleGroups=isMultiGroup?[activeGrp]:groups;
+  // Khi gõ tìm kiếm hoặc lọc "Chưa điền/Bắt buộc" thì hiện tất cả các nhóm để
+  // không phải bấm qua từng bước mới thấy trường cần nhập
+  const isFiltering=!!search.trim()||viewMode!=="all";
+  const visibleGroups=(isMultiGroup&&!isFiltering)?[activeGrp]:groups;
 
   const validate=()=>{
     const e={};
@@ -6034,7 +6345,36 @@ function FormModal({fields,initial,title,onSave,onClose}){
     return!Object.keys(e).length;
   };
 
-  const handleSave=()=>{if(validate())onSave(data);};
+  const handleSave=()=>{
+    if(Object.keys(errors).length){
+      const g=fields.find(f=>errors[f.k]);
+      if(g){const gi=groups.indexOf(g.grp||"Thông tin");if(gi>=0)setActiveGrpIdx(gi);}
+      return;
+    }
+    if(validate())onSave(data);
+  };
+  // ── Phím tắt: Ctrl+S lưu, Esc đóng ──
+  useEffect(()=>{
+    const onKey=e=>{
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();handleSave();}
+      else if(e.key==="Escape"){e.preventDefault();handleClose();}
+    };
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  });
+  // ── Lọc trường theo từ khóa và trạng thái điền ──
+  const matchFilter=(f)=>{
+    if(search.trim()){
+      const q=stripDiacriticsVN(search).toLowerCase();
+      const hay=stripDiacriticsVN((f.lbl||"")+" "+f.k).toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    const has=data[f.k]&&data[f.k]!==false&&data[f.k]!=="";
+    if(viewMode==="empty")return!has;
+    if(viewMode==="filled")return!!has;
+    if(viewMode==="req")return!!f.req;
+    return true;
+  };
 
   const handleClose=()=>{
     if(dirty&&!window.confirm("Bạn có thay đổi chưa lưu. Thoát?"))return;
@@ -6077,6 +6417,24 @@ function FormModal({fields,initial,title,onSave,onClose}){
             <button onClick={handleClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",
               cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
+        </div>
+
+        {/* ── Thanh tìm nhanh trường + bộ lọc ── */}
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 16px",borderBottom:"1px solid #e8edf5",
+          background:"#f8fafd",flexShrink:0,flexWrap:"wrap"}}>
+          <input className="fi" value={search} onChange={e=>setSearch(e.target.value)}
+            autoComplete="off" spellCheck="false"
+            placeholder="🔎 Tìm nhanh trường cần nhập (VD: cccd, hộ khẩu, quyết định)..."
+            style={{flex:"1 1 240px",height:32,fontSize:12.5}}/>
+          <div style={{display:"flex",gap:4}}>
+            {[["all","Tất cả"],["req","Bắt buộc"],["empty","Chưa điền"],["filled","Đã điền"]].map(([m,lbl])=>(
+              <button key={m} type="button" onClick={()=>setViewMode(m)}
+                style={{padding:"5px 10px",borderRadius:7,fontSize:11.5,fontWeight:700,cursor:"pointer",
+                  border:"1px solid "+(viewMode===m?"#1e3a6e":"#dbe3ef"),
+                  background:viewMode===m?"#1e3a6e":"#fff",color:viewMode===m?"#fff":"#475569"}}>{lbl}</button>
+            ))}
+          </div>
+          <span style={{fontSize:11,color:"#94a3b8"}}>Ctrl+S lưu · Esc đóng</span>
         </div>
 
         {/* ── Group nav (sidebar + content) ── */}
@@ -6148,18 +6506,29 @@ function FormModal({fields,initial,title,onSave,onClose}){
 
                   {/* Fields grid */}
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:"14px 18px"}}>
-                    {grpFields.filter(isFieldVisible).map(f=>{
+                    {grpFields.filter(f=>isFieldVisible(f)&&matchFilter(f)).map(f=>{
                       const isWide=f.type==="textarea"||f.wide||f.type==="nhom_selector"||f.type==="photo3x4";
                       const hasVal=data[f.k]&&data[f.k]!==false&&data[f.k]!=="";
                       return(
                         <div key={f.k} style={{gridColumn:isWide?"1/-1":"auto",display:"flex",flexDirection:"column",gap:5}}>
                           {/* Label row */}
-                          <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                             <label style={{fontSize:12,fontWeight:600,color:errors[f.k]?"#c62828":hasVal?"#1565c0":"#444",transition:"color .15s"}}>
                               {f.lbl}
                               {f.req&&<span style={{color:"#e53935",marginLeft:3}}>*</span>}
                             </label>
                             {hasVal&&!errors[f.k]&&<span style={{fontSize:11,color:"#43a047"}}>✓</span>}
+                            {f.k==="ngay_sinh"&&data.ngay_sinh&&_pd(data.ngay_sinh)&&
+                              <span style={{fontSize:10.5,fontWeight:700,color:"#1565c0",background:"#e3f2fd",padding:"1px 7px",borderRadius:9}}>
+                                {new Date().getFullYear()-_pd(data.ngay_sinh).getFullYear()} tuổi
+                              </span>}
+                            {f.k==="noi_o_ht"&&data.hktt&&data.hktt!==data.noi_o_ht&&
+                              <button type="button" onClick={copyHktt}
+                                style={{fontSize:10.5,fontWeight:600,color:"#1565c0",background:"#e3f2fd",border:"1px solid #bbdefb",
+                                  borderRadius:9,padding:"1px 7px",cursor:"pointer"}}>⤵ Giống HKTT</button>}
+                            {f.k==="cccd"&&data.cccd&&<span style={{fontSize:10.5,color:"#94a3b8"}}>
+                              {String(data.cccd).replace(/\D/g,"").length} chữ số
+                            </span>}
                           </div>
                           {/* Input */}
                           <FieldInput f={f} value={data[f.k]} valueOther={data[f.k+"_other"]}
@@ -6167,7 +6536,9 @@ function FormModal({fields,initial,title,onSave,onClose}){
                           {/* Hint / Error */}
                           {errors[f.k]
                             ?<span style={{fontSize:11,color:"#c62828",display:"flex",alignItems:"center",gap:3}}>⚠️ {errors[f.k]}</span>
-                            :f.ph&&f.type!=="text"&&<span style={{fontSize:10.5,color:"#999",fontStyle:"italic"}}>VD: {f.ph}</span>
+                            :warns[f.k]
+                              ?<span style={{fontSize:11,color:"#b45309",lineHeight:1.5}}>{warns[f.k]}</span>
+                              :f.ph&&f.type!=="text"&&<span style={{fontSize:10.5,color:"#999",fontStyle:"italic"}}>VD: {f.ph}</span>
                           }
                         </div>
                       );
@@ -6206,6 +6577,12 @@ function FormModal({fields,initial,title,onSave,onClose}){
           )}
           {!isMultiGroup&&<div style={{flex:1}}/>}
 
+          {totalReq>filledReq&&
+            <span style={{fontSize:11.5,fontWeight:700,color:"#b45309",cursor:"pointer",marginRight:6}}
+              onClick={()=>{setViewMode("req");setSearch("");}}
+              title="Bấm để chỉ hiển thị các trường bắt buộc chưa điền">
+              ⚠️ Còn {totalReq-filledReq} trường bắt buộc
+            </span>}
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-ghost" onClick={handleClose}>Hủy</button>
             {isMultiGroup&&safeIdx<groups.length-1
@@ -6545,12 +6922,68 @@ function GroupPage({groupKey,title,icon,fields,data,setData,storeKey,dateRange,t
         onView={r=>setViewRec(r)} onEditPwd={r=>setEditPwdTarget(r)}
         onDelete={r=>setDelRec(r)} onLoai={r=>setLoaiRec(r)} onPhucHoi={phucHoi}
         columns={colMap[groupKey]||[]} dateRange={dateRange} showLoai={showLoai}/>
-      {form&&<FormModal fields={fields} initial={form.rec} title={form.mode==="add"?`➕ Thêm – ${title}`:`✏️ Sửa – ${title}`} onSave={save} onClose={()=>setForm(null)}/>}
+      {form&&<FormModal fields={fields} initial={form.rec} allRecords={data} title={form.mode==="add"?`➕ Thêm – ${title}`:`✏️ Sửa – ${title}`} onSave={save} onClose={()=>setForm(null)}/>}
       {loaiRec&&<LoaiModal rec={loaiRec} onSave={loai} onClose={()=>setLoaiRec(null)}/>}
       {delRec&&<Confirm msg={`Xóa vĩnh viễn bản ghi "${delRec.ho_ten||delRec.trich_yeu_nd||"?"}"?`} onOk={del} onCancel={()=>setDelRec(null)}/>}
       {viewRec&&<ViewModal rec={viewRec} fields={fields||F_UNIFIED} onClose={()=>setViewRec(null)} onEdit={r=>setEditPwdTarget(r)}/>}
       {editPwdTarget&&<EditPwdModal onConfirm={()=>{setForm({mode:"edit",rec:editPwdTarget});setEditPwdTarget(null);}} onClose={()=>setEditPwdTarget(null)}/>}
     </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// BIỂU ĐỒ SVG THUẦN (không phụ thuộc thư viện ngoài)
+// DonutChart – cơ cấu theo diện quản lý; BarRow – thanh xếp chồng theo diện
+// ══════════════════════════════════════════════════════════════
+function DonutChart({items,size=190,thickness=30,center}){
+  const total=items.reduce((a,i)=>a+i.value,0);
+  const R=size/2,r=R-thickness/2;
+  let acc=0;
+  const arcs=items.filter(i=>i.value>0).map((i,idx)=>{
+    const frac=i.value/total;
+    const a0=acc*2*Math.PI-Math.PI/2;acc+=frac;
+    const a1=acc*2*Math.PI-Math.PI/2;
+    const large=frac>0.5?1:0;
+    const x0=R+r*Math.cos(a0),y0=R+r*Math.sin(a0);
+    const x1=R+r*Math.cos(a1),y1=R+r*Math.sin(a1);
+    // Trường hợp chỉ có 1 nhóm chiếm 100% → vẽ vòng tròn đầy
+    if(frac>=0.999)return<circle key={idx} cx={R} cy={R} r={r} fill="none" stroke={i.color} strokeWidth={thickness}/>;
+    return<path key={idx} d={`M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`} fill="none"
+      stroke={i.color} strokeWidth={thickness} strokeLinecap="butt"><title>{`${i.label}: ${i.value}`}</title></path>;
+  });
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+      <svg width={size} height={size} style={{flexShrink:0}}>
+        <circle cx={R} cy={R} r={r} fill="none" stroke="#eef2f7" strokeWidth={thickness}/>
+        {arcs}
+        <text x={R} y={R-4} textAnchor="middle" style={{fontSize:26,fontWeight:800,fill:"#0c1b4d"}}>{center!=null?center:total}</text>
+        <text x={R} y={R+16} textAnchor="middle" style={{fontSize:11,fill:"#64748b",fontWeight:600}}>lượt quản lý</text>
+      </svg>
+      <div style={{flex:1,minWidth:170}}>
+        {items.map((i,idx)=>(
+          <div key={idx} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",fontSize:12.5}}>
+            <span style={{width:11,height:11,borderRadius:3,background:i.color,flexShrink:0}}/>
+            <span style={{flex:1,color:"var(--text2)"}}>{i.label}</span>
+            <b style={{color:i.color}}>{i.value}</b>
+            <span style={{width:44,textAlign:"right",color:"var(--muted)",fontSize:11.5}}>{total?Math.round(i.value/total*100):0}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function StackedBar({parts,total,max,height=16}){
+  // Thanh ngang xếp chồng: mỗi đoạn là 1 diện quản lý
+  const w=max?Math.max(3,Math.round(total/max*100)):0;
+  return(
+    <div style={{background:"#eef2f7",borderRadius:8,height,width:"100%",overflow:"hidden"}}>
+      <div style={{display:"flex",height:"100%",width:w+"%",borderRadius:8,overflow:"hidden"}}>
+        {parts.filter(p=>p.value>0).map((p,i)=>(
+          <div key={i} title={`${p.label}: ${p.value}`}
+            style={{width:(total?p.value/total*100:0)+"%",background:p.color}}/>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -6567,7 +7000,7 @@ function Dashboard({data}){
   const khuPho=data.khu_pho||[];
   const activeSubjects=useMemo(()=>dt.filter(r=>!r.da_loai),[dt]);
   const loaiSubjects=useMemo(()=>dt.filter(r=>r.da_loai),[dt]);
-  const hotspot=useMemo(()=>computeKhuPhoHotspot(khuPho,activeSubjects),[khuPho,activeSubjects]);
+  const hotspot=useMemo(()=>computeKhuPhoHotspot(khuPho,activeSubjects,loaiSubjects),[khuPho,activeSubjects,loaiSubjects]);
   const topKp=hotspot.stats[0];
   const maxTong=topKp?topKp.tong:0;
   const NHOM_CLR={su_dung:"var(--g-sd)",nghien:"var(--g-ng)",sau_cai:"var(--g-sc)",vppl:"var(--g-vp)",nghi_van:"var(--g-nv)",suu_tra:"var(--g-st)"};
@@ -6641,15 +7074,19 @@ function Dashboard({data}){
         </div>
       </div>
 
-      {/* ══════ Khu phố có nhiều đối tượng ma túy nhất ══════ */}
+      {/* ══════════════ BẢNG ĐIỀU KHIỂN KHU PHỐ (v8.2) ══════════════ */}
       <div className="card" style={{marginTop:16}}>
         <div className="card-hd" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-          <h3>🗺️ Khu phố có nhiều đối tượng ma túy nhất</h3>
+          <h3>🗺️ Bản đồ nhiệt khu phố – đối tượng ma túy</h3>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             <span className="badge badge-navy">{hotspot.soKpCoDT}/{hotspot.tongKp} khu phố có ghi nhận</span>
+            {hotspot.kpSach>0&&
+              <span className="badge" style={{background:"#f0fdf4",color:"var(--green)",border:"1px solid #bbf7d0"}}>
+                ✅ {hotspot.kpSach} khu phố chưa ghi nhận
+              </span>}
             {hotspot.khongXacDinh>0&&
               <span className="badge" style={{background:"#fff7ed",color:"var(--orange)",border:"1px solid #fed7aa"}}>
-                ⚠️ {hotspot.khongXacDinh} đối tượng chưa xác định khu phố
+                ⚠️ {hotspot.khongXacDinh} đối tượng chưa gán khu phố
               </span>}
           </div>
         </div>
@@ -6667,68 +7104,129 @@ function Dashboard({data}){
             </div>
           ):(
           <>
-            {/* Khu phố "nóng" nhất — nổi bật */}
-            <div style={{
-              display:"flex",alignItems:"center",gap:16,padding:"16px 20px",borderRadius:14,marginBottom:20,
-              background:"linear-gradient(135deg,#fff1f0 0%,#fff8f0 100%)",border:"1.5px solid #ffccc7",
-              boxShadow:"0 2px 10px rgba(198,40,40,.08)"
-            }}>
-              <div style={{fontSize:38,lineHeight:1}}>🔥</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:11.5,fontWeight:700,color:"var(--red)",letterSpacing:.3,marginBottom:2}}>KHU PHỐ NÓNG NHẤT</div>
-                <div style={{fontSize:19,fontWeight:800,color:"var(--navy)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {topKp.ten}{topKp.ten_cu?<span style={{fontSize:12,fontWeight:500,color:"var(--muted)"}}> (cũ: {topKp.ten_cu})</span>:null}
+            {/* ── Hàng chỉ số nhanh ── */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+              {[
+                {lbl:"Khu phố nóng nhất",val:topKp.ten,sub:topKp.tong+" đối tượng",clr:"var(--red)",ic:"🔥",small:true},
+                {lbl:"Bình quân / khu phố",val:hotspot.binhQuan,sub:"trên "+hotspot.soKpCoDT+" khu phố có ĐT",clr:"var(--accent)",ic:"📈"},
+                {lbl:"Mức độ tập trung",val:hotspot.top3Share+"%",sub:"ở 3 khu phố dẫn đầu",clr:"var(--orange)",ic:"🎯"},
+                {lbl:"Nữ giới",val:hotspot.tongNu,sub:pct(hotspot.tongNu,hotspot.tongCoXacDinh)+"% tổng số",clr:"#c2185b",ic:"👩"},
+                {lbl:"Chưa cập nhật PM",val:hotspot.tongChuaPM,sub:"cần nhập phần mềm QLĐT",clr:"var(--gold)",ic:"🖥️"},
+                {lbl:"Đã thanh loại",val:hotspot.tongDaLoai,sub:"lũy kế theo khu phố",clr:"var(--green)",ic:"✅"},
+              ].map((c,i)=>(
+                <div key={i} style={{background:"var(--card2)",border:"1px solid var(--border)",borderLeft:"3px solid "+c.clr,borderRadius:10,padding:"9px 12px"}}>
+                  <div style={{fontSize:10.5,fontWeight:700,color:"var(--muted)",display:"flex",gap:5,alignItems:"center"}}>
+                    <span>{c.ic}</span>{c.lbl}
+                  </div>
+                  <div style={{fontSize:c.small?15:22,fontWeight:800,color:c.clr,lineHeight:1.25,marginTop:2,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={String(c.val)}>{c.val}</div>
+                  <div style={{fontSize:10.5,color:"var(--muted2)"}}>{c.sub}</div>
                 </div>
-                <div style={{fontSize:12,color:"var(--muted)",marginTop:2}}>
-                  {topKp.quanLy} theo khu phố quản lý{topKp.theoCuTru>0?` · ${topKp.theoCuTru} suy luận từ địa chỉ cư trú`:""}
+              ))}
+            </div>
+
+            {/* ── Biểu đồ tròn cơ cấu diện quản lý + Top 5 khu phố ── */}
+            <div style={{display:"grid",gridTemplateColumns:"minmax(280px,1fr) minmax(280px,1.2fr)",gap:16,marginBottom:18}}>
+              <div style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px"}}>
+                <div style={{fontSize:12.5,fontWeight:800,color:"var(--navy)",marginBottom:10}}>🍩 Cơ cấu theo diện quản lý</div>
+                <DonutChart center={countUniqueSubjects(activeSubjects)} items={NHOM_LIST.map(n=>({
+                  label:n.icon+" "+n.lbl,value:hotspot.coCau[n.id]||0,color:NHOM_CLR[n.id],
+                }))}/>
+                <div style={{fontSize:10.5,color:"var(--muted2)",marginTop:8,lineHeight:1.5}}>
+                  Số ở giữa là tổng số người đang quản lý (không trùng); các lát cắt là lượt quản lý theo diện —
+                  một người thuộc nhiều diện sẽ được tính ở từng diện.
                 </div>
               </div>
-              <div style={{textAlign:"center",flexShrink:0}}>
-                <div style={{fontSize:34,fontWeight:800,color:"var(--red)"}}>{topKp.tong}</div>
-                <div style={{fontSize:11,color:"var(--muted)",fontWeight:600}}>đối tượng</div>
+              <div style={{background:"var(--card2)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px"}}>
+                <div style={{fontSize:12.5,fontWeight:800,color:"var(--navy)",marginBottom:12}}>📊 Top 5 khu phố nhiều đối tượng nhất</div>
+                {hotspot.stats.filter(s=>s.tong>0).slice(0,5).map((s,i)=>{
+                  const medal=["🥇","🥈","🥉"][i]||(i+1);
+                  return(
+                    <div key={s.id} style={{marginBottom:11}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:12.5,fontWeight:700,color:"var(--text)",display:"flex",gap:6,minWidth:0}}>
+                          <span style={{width:18,textAlign:"center",flexShrink:0}}>{medal}</span>
+                          <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.ten}</span>
+                        </span>
+                        <span style={{fontSize:12.5,fontWeight:800,color:"var(--navy)",flexShrink:0}}>
+                          {s.tong} <span style={{fontSize:10.5,fontWeight:600,color:"var(--muted)"}}>({pct(s.tong,hotspot.tongCoXacDinh)}%)</span>
+                        </span>
+                      </div>
+                      <StackedBar total={s.tong} max={maxTong} parts={NHOM_LIST.map(n=>({
+                        label:n.lbl,value:s.perNhom[n.id]||0,color:NHOM_CLR[n.id]}))}/>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10,paddingTop:8,borderTop:"1px dashed var(--border)"}}>
+                  {NHOM_LIST.map(n=>(
+                    <span key={n.id} style={{fontSize:10.5,fontWeight:600,color:"var(--muted)",display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{width:9,height:9,borderRadius:2,background:NHOM_CLR[n.id]}}/>{n.short}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Bảng xếp hạng toàn bộ khu phố */}
-            <div>
-              {hotspot.stats.filter(s=>s.tong>0).map((s,i)=>{
-                const w=maxTong?Math.max(4,Math.round(s.tong/maxTong*100)):0;
-                const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":null;
-                const barClr=i===0?"var(--red)":i===1?"var(--orange)":i===2?"var(--gold)":"var(--g-sc)";
-                return(
-                  <div key={s.id} style={{marginBottom:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,gap:8}}>
-                      <span style={{fontSize:13,fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                        <span style={{width:20,textAlign:"center",flexShrink:0}}>{medal||(i+1)}</span>
-                        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.ten}</span>
-                      </span>
-                      <span style={{fontSize:13,fontWeight:800,color:barClr,flexShrink:0}}>{s.tong}</span>
-                    </div>
-                    <div className="progress-bar" style={{marginLeft:26}}>
-                      <div className="progress-bar-fill" style={{width:w+"%",background:barClr}}/>
-                    </div>
-                    <div style={{display:"flex",gap:10,marginLeft:26,marginTop:4,flexWrap:"wrap"}}>
-                      {Object.entries(s.perNhom).filter(([,n])=>n>0).map(([nk,n])=>(
-                        <span key={nk} style={{fontSize:10.5,fontWeight:600,color:NHOM_CLR[nk],display:"flex",alignItems:"center",gap:3}}>
-                          {NHOM_ICON[nk]} {n}
-                        </span>
+            {/* ── Bảng chi tiết toàn bộ khu phố ── */}
+            <div style={{fontSize:12.5,fontWeight:800,color:"var(--navy)",marginBottom:8}}>📋 Chi tiết từng khu phố</div>
+            <div className="tbl-wrap" style={{maxHeight:420,overflowY:"auto"}}>
+              <table>
+                <thead><tr>
+                  <th style={{width:46}}>#</th>
+                  <th style={{minWidth:150}}>Khu phố</th>
+                  <th style={{width:90,textAlign:"center"}}>Tổng ĐT</th>
+                  <th style={{minWidth:150}}>Cơ cấu theo diện</th>
+                  {NHOM_LIST.map(n=><th key={n.id} style={{width:52,textAlign:"center"}} title={n.lbl}>{n.icon}</th>)}
+                  <th style={{width:66,textAlign:"center"}} title="Nữ giới">👩 Nữ</th>
+                  <th style={{width:78,textAlign:"center"}} title="Chưa cập nhật phần mềm QLĐT">Chưa PM</th>
+                  <th style={{width:78,textAlign:"center"}} title="Đã thanh loại (lũy kế)">Đã loại</th>
+                  <th style={{width:96,textAlign:"center"}} title="Đã gán khu phố / suy luận từ địa chỉ">Nguồn gán</th>
+                </tr></thead>
+                <tbody>
+                  {hotspot.stats.map((s,i)=>(
+                    <tr key={s.id} style={s.tong===0?{opacity:.55}:null}>
+                      <td style={{textAlign:"center",fontWeight:700,color:i<3&&s.tong>0?"var(--red)":"var(--muted)"}}>
+                        {s.tong>0?(["🥇","🥈","🥉"][i]||(i+1)):"–"}
+                      </td>
+                      <td style={{fontWeight:600,color:"var(--navy)"}}>
+                        {s.ten}
+                        {s.ten_cu?<div style={{fontSize:10.5,color:"var(--muted2)",fontWeight:400}}>cũ: {s.ten_cu}</div>:null}
+                      </td>
+                      <td style={{textAlign:"center"}}>
+                        <span style={{fontSize:15,fontWeight:800,color:s.tong===0?"var(--muted2)":(i===0?"var(--red)":"var(--navy)")}}>{s.tong}</span>
+                        <div style={{fontSize:10,color:"var(--muted2)"}}>{pct(s.tong,hotspot.tongCoXacDinh)}%</div>
+                      </td>
+                      <td>
+                        <StackedBar total={s.tong} max={maxTong} height={12} parts={NHOM_LIST.map(n=>({
+                          label:n.lbl,value:s.perNhom[n.id]||0,color:NHOM_CLR[n.id]}))}/>
+                      </td>
+                      {NHOM_LIST.map(n=>(
+                        <td key={n.id} style={{textAlign:"center",fontWeight:700,
+                          color:(s.perNhom[n.id]||0)>0?NHOM_CLR[n.id]:"#cbd5e1"}}>{s.perNhom[n.id]||0}</td>
                       ))}
-                    </div>
-                  </div>
-                );
-              })}
+                      <td style={{textAlign:"center",fontWeight:600,color:s.nu?"#c2185b":"#cbd5e1"}}>{s.nu}</td>
+                      <td style={{textAlign:"center",fontWeight:700,color:s.chuaPM?"var(--orange)":"#cbd5e1"}}>{s.chuaPM}</td>
+                      <td style={{textAlign:"center",fontWeight:600,color:s.daLoai?"var(--green)":"#cbd5e1"}}>{s.daLoai}</td>
+                      <td style={{textAlign:"center",fontSize:11,color:"var(--muted)"}}>
+                        {s.tong===0?"–":<span>{s.quanLy} gán{s.theoCuTru>0?<span style={{color:"var(--orange)"}}> · {s.theoCuTru} dò</span>:null}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {hotspot.stats.filter(s=>s.tong===0).length>0&&
-              <div style={{fontSize:11.5,color:"var(--muted2)",marginTop:8,paddingTop:10,borderTop:"1px dashed var(--border)"}}>
-                {hotspot.stats.filter(s=>s.tong===0).length} khu phố chưa ghi nhận đối tượng nào: {" "}
-                {hotspot.stats.filter(s=>s.tong===0).map(s=>s.ten).join(", ")}
+            {hotspot.khongXacDinh>0&&
+              <div style={{marginTop:10,background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"9px 12px",fontSize:12,lineHeight:1.6,color:"#9a3412"}}>
+                ⚠️ Còn <b>{hotspot.khongXacDinh}</b> đối tượng chưa xác định được khu phố (chưa chọn "Khu phố quản lý" và địa chỉ
+                không chứa tên khu phố nào trong danh mục). Số này <b>không</b> được tính vào bảng trên — nên bổ sung để thống kê đủ.
               </div>}
           </>
           )}
         </div>
         <div style={{padding:"0 18px 16px",fontSize:11,color:"var(--muted)",lineHeight:1.6}}>
-          💡 Số liệu tính trên tất cả đối tượng đang quản lý (6 nhóm, đã loại trừ đối tượng đã thanh loại), ưu tiên trường
+          💡 Số liệu tính trên tất cả đối tượng đang quản lý (6 diện, đã trừ đối tượng đã thanh loại), ưu tiên trường
           <b> Khu phố quản lý</b> đã gán trực tiếp; nếu chưa gán, hệ thống tự dò tên khu phố trong <b>Nơi thường trú</b> / <b>Nơi ở hiện tại</b>.
+          Cột "Đã loại" thống kê lũy kế đối tượng đã thanh loại thuộc khu phố đó.
         </div>
       </div>
     </div>
@@ -6747,13 +7245,13 @@ function LogicCheckBox({data,dr}){
   if(!S)return null;
   const warns=validateStats(S);
   const cell=(l,v)=>(
-    <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 10px",minWidth:130,flex:"1 1 130px"}}>
+    <div key={l} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 10px",minWidth:130,flex:"1 1 130px"}}>
       <div style={{fontSize:10.5,fontWeight:700,color:"#64748b",lineHeight:1.3}}>{l}</div>
       <div style={{fontSize:17,fontWeight:800,color:"#0c1b4d"}}>{v}</div>
     </div>
   );
   const grp=(title,rows)=>(
-    <div style={{marginBottom:8}}>
+    <div key={title} style={{marginBottom:8}}>
       <div style={{fontSize:11.5,fontWeight:800,color:"#334155",margin:"6px 0 5px"}}>{title}</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{rows}</div>
     </div>
@@ -6931,6 +7429,37 @@ function ReportPage({data,onSaveReport,toast}){
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// MÃ HÓA FILE SAO LƯU (AES-GCM 256, khóa dẫn xuất PBKDF2-SHA256)
+// File .json backup chứa toàn bộ dữ liệu nhân thân (CCCD, HKTT…) – khi đặt
+// mật khẩu, nội dung được mã hóa, người khác lấy được file cũng không đọc được.
+// ══════════════════════════════════════════════════════════════════════
+async function _aesKey(pwd,saltHex,iter){
+  const enc=new TextEncoder();
+  const salt=Uint8Array.from(saltHex.match(/.{2}/g).map(h=>parseInt(h,16)));
+  const base=await crypto.subtle.importKey("raw",enc.encode(pwd),{name:"PBKDF2"},false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:iter||PWD_ITER,hash:"SHA-256"},
+    base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
+}
+const _b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+const _unb64=str=>Uint8Array.from(atob(str),c=>c.charCodeAt(0));
+async function encryptBackup(plainText,pwd){
+  const salt=_rndHex(16);
+  const ivArr=new Uint8Array(12);crypto.getRandomValues(ivArr);
+  const key=await _aesKey(pwd,salt,PWD_ITER);
+  const ct=await crypto.subtle.encrypt({name:"AES-GCM",iv:ivArr},key,new TextEncoder().encode(plainText));
+  return JSON.stringify({
+    encrypted:true,alg:"AES-GCM-256/PBKDF2-SHA256",iter:PWD_ITER,
+    salt,iv:_b64(ivArr.buffer),data:_b64(ct),
+    app:CONFIG.version,donVi:CONFIG.donVi,timestamp:new Date().toISOString(),
+  });
+}
+async function decryptBackup(obj,pwd){
+  const key=await _aesKey(pwd,obj.salt,obj.iter||PWD_ITER);
+  const pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:_unb64(obj.iv)},key,_unb64(obj.data));
+  return new TextDecoder().decode(pt);
+}
+
 function BackupPage({data,onRestore,toast}){
   const [drag,setDrag]=useState(false);
   const [showPlaceholder,setShowPlaceholder]=useState(false);
@@ -6940,18 +7469,38 @@ function BackupPage({data,onRestore,toast}){
   const [expFrom,setExpFrom]=useState("");
   const [expTo,setExpTo]=useState("");
   const fileRef=useRef();
-  const doBackup=()=>{
-    const blob=new Blob([JSON.stringify({version:CONFIG.version,timestamp:new Date().toISOString(),donVi:CONFIG.donVi,data},null,2)],{type:"application/json"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-    a.download=`BACKUP_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.json`;a.click();
-    toast("Đã tải xuống file backup!","success");
+  const [encPwd,setEncPwd]=useState("");
+  const [encOn,setEncOn]=useState(true);
+  const doBackup=async()=>{
+    try{
+      const plain=JSON.stringify({version:CONFIG.version,timestamp:new Date().toISOString(),donVi:CONFIG.donVi,data},null,2);
+      let content=plain,suffix="";
+      if(encOn){
+        if(encPwd.length<8){toast("Mật khẩu mã hóa tối thiểu 8 ký tự (hoặc bỏ chọn mã hóa)","error");return;}
+        content=await encryptBackup(plain,encPwd);suffix="_MAHOA";
+      }
+      const blob=new Blob([content],{type:"application/json"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`BACKUP_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}${suffix}.json`;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+      toast(encOn?"Đã tải file backup ĐÃ MÃ HÓA – hãy nhớ kỹ mật khẩu, mất mật khẩu là không khôi phục được!":"Đã tải xuống file backup!","success");
+    }catch(e){toast("Lỗi tạo file backup: "+e.message,"error");}
   };
   const processFile=file=>{
     if(!file||!file.name.endsWith(".json")){toast("Vui lòng chọn file .json","error");return;}
     const reader=new FileReader();
     reader.onload=async e=>{
       try{
-        const parsed=JSON.parse(e.target.result);
+        let parsed=JSON.parse(e.target.result);
+        if(parsed&&parsed.encrypted){
+          const pw=window.prompt("File sao lưu đã được mã hóa. Nhập mật khẩu để khôi phục:");
+          if(!pw)return;
+          let txt;
+          try{txt=await decryptBackup(parsed,pw);}
+          catch{throw new Error("Mật khẩu không đúng hoặc file đã bị sửa đổi");}
+          parsed=JSON.parse(txt);
+        }
         if(!parsed.data)throw new Error("Không tìm thấy dữ liệu");
         const d=parsed.data;
         if(!d.su_dung||!d.nghien||!d.sau_cai||!d.vppl)throw new Error("Cấu trúc file không đúng");
@@ -6961,14 +7510,28 @@ function BackupPage({data,onRestore,toast}){
       }catch(err){toast("Lỗi khôi phục: "+err.message,"error");}
     };reader.readAsText(file);
   };
+  // Đếm bản ghi: tách rõ ĐANG QUẢN LÝ / ĐÃ LOẠI. Một người thuộc nhiều diện chỉ
+  // tính 1 bản ghi ở dòng "Tất cả đối tượng" (các dòng diện bên dưới có thể trùng nhau).
+  const A=l=>(l||[]).filter(r=>!r.da_loai).length;
+  const L=l=>(l||[]).filter(r=>r.da_loai).length;
+  const dtAllRec=data.doi_tuong||[];
   const counts=[
-    ["👤 Tất cả đối tượng",(data.doi_tuong||[]).length],
-    ["💊 SD TPCMT",(data.su_dung||[]).length],
-    ["⚕️ Nghiện",(data.nghien||[]).length],
-    ["🏠 Sau cai",(data.sau_cai||[]).length],
-    ["⚖️ VPPL",(data.vppl||[]).length],
-    ["📁 Vụ án",(data.vu_an||[]).length],
+    ["💊 Người sử dụng TPCMT",A(data.su_dung),L(data.su_dung)],
+    ["⚕️ Người nghiện ma túy",A(data.nghien),L(data.nghien)],
+    ["🏠 Quản lý sau cai",A(data.sau_cai),L(data.sau_cai)],
+    ["⚖️ Vi phạm pháp luật về MT",A(data.vppl),L(data.vppl)],
+    ["🔍 Đối tượng nghi vấn",A(data.nghi_van),L(data.nghi_van)],
+    ["📂 Đối tượng sưu tra",A(data.suu_tra),L(data.suu_tra)],
   ];
+  const khac=[
+    ["📁 Vụ án/vụ việc (PC04)",A(data.vu_an),L(data.vu_an)],
+    ["👥 Băng nhóm",A(data.bang_nhom),L(data.bang_nhom)],
+    ["📍 Điểm tổ chức, chứa chấp",A(data.diem_tc),L(data.diem_tc)],
+    ["🔎 Diện Hướng dẫn 26",A(data.hd26_dt),L(data.hd26_dt)],
+    ["🚔 ĐT bị bắt trên địa bàn",(data.bat_dia_ban||[]).length,0],
+    ["🆕 Vụ việc ma túy mới",(data.vu_viec_moi||[]).length,0],
+  ];
+  const tongDT=A(dtAllRec),tongLoai=L(dtAllRec);
   return(
     <div>
       <div className="page-header"><div><div className="page-title">🔒 Backup & Restore</div><div className="page-sub">Sao lưu và khôi phục dữ liệu</div></div></div>
@@ -6976,8 +7539,45 @@ function BackupPage({data,onRestore,toast}){
         <div className="card"><div className="card-hd"><h3>📦 Sao lưu (Backup)</h3></div>
           <div style={{padding:"16px 14px"}}>
             <div style={{background:"#e8f5e9",border:"1px solid #a5d6a7",borderRadius:8,padding:"11px 13px",marginBottom:14}}>
-              {counts.map(([lbl,n])=><div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}><span>{lbl}</span><b>{n} bản ghi</b></div>)}
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:700,marginTop:6,paddingTop:6,borderTop:"1px solid #c8e6c9"}}><span>Tổng</span><span>{counts.reduce((s,[,n])=>s+n,0)} bản ghi</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,fontWeight:700,color:"#2e7d32",borderBottom:"1px solid #c8e6c9",paddingBottom:4,marginBottom:4}}>
+                <span>Diện quản lý</span><span>Đang QL / Đã loại</span>
+              </div>
+              {counts.map(([lbl,n,l])=>(
+                <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
+                  <span>{lbl}</span><b>{n} / <span style={{color:"#c62828"}}>{l}</span></b>
+                </div>))}
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,fontWeight:700,marginTop:6,paddingTop:6,borderTop:"1px solid #c8e6c9"}}>
+                <span>👤 Tổng số đối tượng (mỗi người tính 1 lần)</span><span>{tongDT} / <span style={{color:"#c62828"}}>{tongLoai}</span></span>
+              </div>
+              <div style={{fontSize:10.5,color:"#558b2f",marginTop:3,lineHeight:1.5}}>
+                Một người có thể thuộc nhiều diện nên tổng các dòng trên thường lớn hơn tổng số đối tượng.
+              </div>
+              <div style={{borderTop:"1px dashed #c8e6c9",marginTop:8,paddingTop:6}}>
+                {khac.map(([lbl,n,l])=>(
+                  <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
+                    <span>{lbl}</span><b>{n}{l?" / "+l:""}</b>
+                  </div>))}
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,fontWeight:700,marginTop:6,paddingTop:6,borderTop:"1px solid #c8e6c9"}}>
+                <span>Tổng số bản ghi trong file backup</span>
+                <span>{dtAllRec.length+khac.reduce((a,[,n,l])=>a+n+l,0)} bản ghi</span>
+              </div>
+            </div>
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:9,padding:"10px 12px",marginBottom:10}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,fontWeight:700,color:"#166534",cursor:"pointer"}}>
+                <input type="checkbox" checked={encOn} onChange={e=>setEncOn(e.target.checked)}/>
+                🔐 Mã hóa file sao lưu bằng mật khẩu (khuyến nghị)
+              </label>
+              {encOn&&<>
+                <input className="fi" type="password" autoComplete="new-password" value={encPwd}
+                  onChange={e=>setEncPwd(e.target.value)} placeholder="Mật khẩu mã hóa (tối thiểu 8 ký tự)..."
+                  style={{marginTop:8}}/>
+                <div style={{fontSize:11,color:"#166534",marginTop:6,lineHeight:1.6}}>
+                  File chứa dữ liệu nhân thân (CCCD, hộ khẩu, nơi ở). Khi mã hóa, nội dung được bảo vệ bằng
+                  AES-GCM 256-bit; người khác lấy được file cũng không đọc được. <b>Mất mật khẩu là không khôi phục được</b> —
+                  hãy lưu mật khẩu ở nơi an toàn theo quy định về bảo vệ bí mật nhà nước.
+                </div>
+              </>}
             </div>
             <button className="btn btn-green" style={{width:"100%"}} onClick={doBackup}>📥 Tải xuống file Backup (.json)</button>
           </div>
@@ -7107,9 +7707,52 @@ function PlaceholderModal({onClose,toast}){
         seen.add(f.k+"_other");out.push({k:f.k+"_other",lbl:f.lbl+" (khác - tự nhập)",grp:f.grp});
       }
     });
-    out.push({k:"ngay_xuat",lbl:"Ngày xuất file (tự động = ngày điền mẫu)",grp:"🗓️ Tiện ích"});
+    TPL_DERIVED.forEach(f=>{if(!seen.has(f.k)){seen.add(f.k);out.push(f);}});
+    TPL_GLOBAL.forEach(f=>{if(!seen.has(f.k)){seen.add(f.k);out.push(f);}});
     return out;
   },[]);
+  // Tải file mẫu Excel demo: hàng tiêu đề + 1 dòng placeholder sẵn sàng chỉnh sửa
+  const taiMauExcel=()=>{
+    try{
+      const cols=[
+        ["STT","stt"],["Họ và tên","ho_ten"],["Ngày sinh","ngay_sinh"],["Giới tính","gioi_tinh"],
+        ["Số CCCD","cccd"],["HKTT / Nơi ở","hktt_noi_o"],["Khu phố","khu_pho"],["Diện quản lý","dien_quan_ly"],
+        ["Ngày vào sổ","ngay_vao_so"],["Loại ma túy","loai_ma_tuy"],["QĐ quản lý","qd_ql_so"],
+        ["Thời hạn QL","qd_ql_tg"],["Có mặt","co_mat"],["Cập nhật PM","cap_nhat_pm"],["Ghi chú","ghi_chu"],
+      ];
+      const aoa=[
+        [CONFIG.capTren.toUpperCase()],
+        [CONFIG.donVi.toUpperCase()],
+        [],
+        ["DANH SÁCH ĐỐI TƯỢNG – {{ky_bao_cao}} (tổng số: {{so_luong}} đối tượng)"],
+        [],
+        cols.map(c=>c[0]),
+        cols.map(c=>"{{"+c[1]+"}}"),
+        [],
+        ["","","","","","","","","","",CONFIG.quanHuyen+", ngày {{ngay_xuat_ngay}} tháng {{ngay_xuat_thang}} năm {{ngay_xuat_nam}}"],
+        ["CÁN BỘ LẬP DANH SÁCH","","","","","","","","","","THỦ TRƯỞNG ĐƠN VỊ"],
+      ];
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"]=cols.map((c,i)=>({wch:i===0?5:(i===1||i===5?26:16)}));
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,"Mau placeholder");
+      XLSX.writeFile(wb,"MAU_PLACEHOLDER_EXCEL.xlsx");
+      toast?.("Đã tải file mẫu Excel có sẵn placeholder","success");
+    }catch(e){toast?.("Lỗi tạo file mẫu: "+e.message,"error");}
+  };
+  // Tải danh sách placeholder ra file .csv để tra cứu/copy khi soạn biểu mẫu
+  const taiDanhSach=()=>{
+    try{
+      const rows=[["Placeholder","Ý nghĩa","Nhóm"],
+        ...allFields.map(f=>["{{"+f.k+"}}",f.lbl||"",f.grp||""])];
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"]=[{wch:34},{wch:70},{wch:34}];
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,"Placeholder");
+      XLSX.writeFile(wb,"DANH_SACH_PLACEHOLDER.xlsx");
+      toast?.("Đã tải danh sách "+allFields.length+" placeholder","success");
+    }catch(e){toast?.("Lỗi tạo danh sách: "+e.message,"error");}
+  };
   const groups=useMemo(()=>[...new Set(allFields.map(f=>f.grp||"Thông tin"))],[allFields]);
   const filtered=search.trim()
     ? allFields.filter(f=>(f.lbl||"").toLowerCase().includes(search.toLowerCase())||f.k.toLowerCase().includes(search.toLowerCase()))
@@ -7138,6 +7781,13 @@ function PlaceholderModal({onClose,toast}){
         <div style={{padding:"12px 20px",borderBottom:"1px solid #eee",display:"flex",gap:10,flexShrink:0}}>
           <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_2_nofill" style={{flex:1}} placeholder="Tìm theo tên trường hoặc nhãn..." value={search} onChange={e=>setSearch(e.target.value)}/>
           <button className="btn btn-green btn-sm" onClick={copyAll}>📋 Copy tất cả</button>
+          <button className="btn btn-ghost btn-sm" onClick={taiDanhSach}>⬇️ Tải danh sách (.xlsx)</button>
+          <button className="btn btn-primary btn-sm" onClick={taiMauExcel}>📄 Tải file mẫu Excel demo</button>
+        </div>
+        <div style={{padding:"8px 20px",background:"#f8fafd",borderBottom:"1px solid #eee",fontSize:11.5,lineHeight:1.6,color:"#475569",flexShrink:0}}>
+          📌 <b>Excel:</b> đặt các placeholder trên <b>cùng một dòng</b> — dòng đó sẽ được nhân bản cho từng đối tượng.
+          Placeholder nhóm 🏛️ đặt ở tiêu đề/chữ ký sẽ <b>không</b> làm nhân dòng. &nbsp;
+          📌 <b>Word:</b> bọc dòng của bảng bằng <code>{"{{#items}}"}</code> … <code>{"{{/items}}"}</code>.
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"10px 20px 20px"}}>
           {groups.map(g=>{
@@ -7168,12 +7818,17 @@ function PlaceholderModal({onClose,toast}){
 // ── Chuyển 1 bản ghi đối tượng thành object {ten_truong: "giá trị hiển thị"} để điền vào template ──
 // Lọc danh sách đối tượng theo khoảng ngày tạo hồ sơ trong hệ thống (_created).
 // Để trống 1 hoặc cả 2 mốc = không giới hạn phía đó.
+// Lọc theo NGÀY VÀO SỔ (mốc thống nhất toàn hệ thống); nếu bản ghi chưa có
+// Ngày vào sổ thì lần lượt lấy Thời gian phát sinh mới → Ngày tạo bản ghi.
+// Không chọn khoảng ngày = lấy toàn bộ.
 function filterByDateRange(list,tuNgay,denNgay){
+  if(!tuNgay&&!denNgay)return list.slice();
   return list.filter(r=>{
-    const created=(r._created||"").slice(0,10);
-    if(!created)return!tuNgay&&!denNgay; // bản ghi không có ngày tạo: chỉ lấy khi không lọc ngày
-    if(tuNgay&&created<tuNgay)return false;
-    if(denNgay&&created>denNgay)return false;
+    const raw=r.ngay_vao_so||r.thoi_gian_ps||(r._created||"").slice(0,10);
+    const d=_pd(raw);
+    if(!d)return false;
+    if(tuNgay){const f=_pd(tuNgay);if(f&&d<f)return false;}
+    if(denNgay){const t=_pd(denNgay);if(t){t.setHours(23,59,59,999);if(d>t)return false;}}
     return true;
   });
 }
@@ -7201,7 +7856,69 @@ function DateRangeFilterBox({tuNgay,setTuNgay,denNgay,setDenNgay,count,accent}){
   );
 }
 
-function buildTemplateData(rec){
+// ══════════════════════════════════════════════════════════════════════
+// PLACEHOLDER PHÁI SINH & CHUNG (v8.2)
+// Ngoài các trường nhập trực tiếp, hệ thống còn dựng sẵn các placeholder
+// tiện dụng cho biểu mẫu: số thứ tự, năm sinh, tuổi, ô đánh dấu X theo
+// diện quản lý, địa chỉ gộp, thông tin đơn vị và kỳ báo cáo.
+// ══════════════════════════════════════════════════════════════════════
+const TPL_DERIVED=[
+  {k:"stt",lbl:"Số thứ tự của đối tượng trong danh sách (1, 2, 3…)",grp:"⭐ Placeholder phái sinh"},
+  {k:"nam_sinh",lbl:"Năm sinh (4 chữ số, VD: 1994)",grp:"⭐ Placeholder phái sinh"},
+  {k:"tuoi",lbl:"Tuổi tính đến ngày xuất file",grp:"⭐ Placeholder phái sinh"},
+  {k:"ngay_sinh_nam",lbl:"Ngày sinh – chỉ hiện khi là NAM (cột Nam của PL1B)",grp:"⭐ Placeholder phái sinh"},
+  {k:"ngay_sinh_nu",lbl:"Ngày sinh – chỉ hiện khi là NỮ (cột Nữ của PL1B)",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_nam",lbl:"Dấu X nếu giới tính Nam",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_nu",lbl:"Dấu X nếu giới tính Nữ",grp:"⭐ Placeholder phái sinh"},
+  {k:"hktt_noi_o",lbl:"HKTT và Nơi ở hiện tại gộp 2 dòng",grp:"⭐ Placeholder phái sinh"},
+  {k:"dia_chi_rut_gon",lbl:"Nơi ở hiện tại (nếu trống thì lấy HKTT)",grp:"⭐ Placeholder phái sinh"},
+  {k:"khu_pho",lbl:"Khu phố (ưu tiên tên mới, chưa có thì lấy tên cũ)",grp:"⭐ Placeholder phái sinh"},
+  {k:"dien_quan_ly",lbl:"Tên đầy đủ các diện quản lý, VD: Người nghiện ma túy, Sau cai",grp:"⭐ Placeholder phái sinh"},
+  {k:"dien_quan_ly_ma",lbl:"Mã các diện quản lý, VD: SD, NG, SC",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_su_dung",lbl:"Dấu X nếu thuộc diện Người sử dụng TPCMT",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_nghien",lbl:"Dấu X nếu thuộc diện Người nghiện ma túy",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_sau_cai",lbl:"Dấu X nếu thuộc diện Quản lý sau cai",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_vppl",lbl:"Dấu X nếu thuộc diện Vi phạm pháp luật về ma túy",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_nghi_van",lbl:"Dấu X nếu thuộc diện Đối tượng nghi vấn",grp:"⭐ Placeholder phái sinh"},
+  {k:"x_suu_tra",lbl:"Dấu X nếu thuộc diện Đối tượng sưu tra",grp:"⭐ Placeholder phái sinh"},
+  {k:"tien_an_tien_su",lbl:"Tiền án, tiền sự (gộp từ ô chi tiết hoặc 2 ô đánh dấu)",grp:"⭐ Placeholder phái sinh"},
+  {k:"so_luot_goi_hoi_dem",lbl:"Số lượt gọi hỏi, răn đe (tự đếm theo các ngày đã nhập)",grp:"⭐ Placeholder phái sinh"},
+  {k:"trang_thai",lbl:"Trạng thái: Đang quản lý / Đã thanh loại",grp:"⭐ Placeholder phái sinh"},
+  {k:"ngay_loai",lbl:"Ngày loại khỏi danh sách (nếu đã thanh loại)",grp:"⭐ Placeholder phái sinh"},
+  {k:"ly_do_loai",lbl:"Lý do loại khỏi danh sách",grp:"⭐ Placeholder phái sinh"},
+];
+const TPL_GLOBAL=[
+  {k:"don_vi",lbl:"Tên đơn vị, VD: Công an phường Tân Bình",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"don_vi_hoa",lbl:"Tên đơn vị VIẾT HOA",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"cap_tren",lbl:"Tên đơn vị cấp trên, VD: Công an TP. Hồ Chí Minh",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"quan_huyen",lbl:"Quận/Thành phố theo cấu hình hệ thống",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"so_luong",lbl:"Tổng số đối tượng được điền vào mẫu",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"tu_ngay",lbl:"Từ ngày (khoảng thời gian đã chọn)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"den_ngay",lbl:"Đến ngày (khoảng thời gian đã chọn)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"ky_bao_cao",lbl:"Câu kỳ báo cáo, VD: Từ ngày 01/01/2026 đến ngày 14/01/2026",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"ngay_xuat",lbl:"Ngày xuất file (dd/mm/yyyy)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"ngay_xuat_ngay",lbl:"Chỉ NGÀY của ngày xuất (VD: 09)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"ngay_xuat_thang",lbl:"Chỉ THÁNG của ngày xuất (VD: 02)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+  {k:"ngay_xuat_nam",lbl:"Chỉ NĂM của ngày xuất (VD: 2026)",grp:"🏛️ Placeholder chung (dùng ngoài bảng)"},
+];
+// Giá trị các placeholder chung
+function buildTemplateGlobals(ctx){
+  const c=ctx||{};
+  const d=new Date();
+  const tu=c.tuNgay?fmtDate(c.tuNgay):"",den=c.denNgay?fmtDate(c.denNgay):"";
+  return{
+    don_vi:CONFIG.donVi,don_vi_hoa:String(CONFIG.donVi||"").toUpperCase(),
+    cap_tren:CONFIG.capTren,quan_huyen:CONFIG.quanHuyen,
+    so_luong:String(c.soLuong==null?"":c.soLuong),
+    tu_ngay:tu||"Không giới hạn",den_ngay:den||"Không giới hạn",
+    ky_bao_cao:(tu&&den)?`Từ ngày ${tu} đến ngày ${den}`:(tu?`Từ ngày ${tu}`:(den?`Đến ngày ${den}`:"Toàn bộ thời gian")),
+    ngay_xuat:fmtDate(d.toISOString().slice(0,10)),
+    ngay_xuat_ngay:String(d.getDate()).padStart(2,"0"),
+    ngay_xuat_thang:String(d.getMonth()+1).padStart(2,"0"),
+    ngay_xuat_nam:String(d.getFullYear()),
+  };
+}
+function buildTemplateData(rec,idx,ctx){
   const out={};
   const seen=new Set();
   F_UNIFIED.forEach(f=>{
@@ -7217,7 +7934,32 @@ function buildTemplateData(rec){
     // Trường select_other còn có placeholder riêng {{ten_truong_other}} (chỉ chứa phần "tự nhập" khi chọn Khác)
     if(f.type==="select_other")out[f.k+"_other"]=rec[f.k+"_other"]||"";
   });
-  out["ngay_xuat"]=fmtDate(new Date().toISOString().slice(0,10));
+  // ── Placeholder phái sinh ──
+  const nhom=rec.nhom||[];
+  const ns=_pd(rec.ngay_sinh);
+  const gt=String(rec.gioi_tinh||"");
+  const hk=String(rec.hktt||"").trim(),no=String(rec.noi_o_ht||"").trim();
+  const soLuot=rec.so_luot_goi_hoi||(rec.ngay_goi_hoi?String(rec.ngay_goi_hoi).split(",").filter(x=>x.trim()).length:"");
+  out.stt=String((idx==null?0:idx)+1);
+  out.nam_sinh=ns?String(ns.getFullYear()):"";
+  out.tuoi=ns?String(new Date().getFullYear()-ns.getFullYear()):"";
+  out.ngay_sinh_nam=gt==="Nam"?fmtDate(rec.ngay_sinh):"";
+  out.ngay_sinh_nu=gt==="Nữ"?fmtDate(rec.ngay_sinh):"";
+  out.x_nam=gt==="Nam"?"X":"";
+  out.x_nu=gt==="Nữ"?"X":"";
+  out.hktt_noi_o=(hk&&no&&hk!==no)?(hk+"\n"+no):(hk||no);
+  out.dia_chi_rut_gon=no||hk;
+  out.khu_pho=dv(rec,"khu_pho_moi")||dv(rec,"khu_pho_cu")||"";
+  out.dien_quan_ly=nhom.map(id=>(NHOM_LIST.find(n=>n.id===id)||{}).lbl).filter(Boolean).join(", ");
+  out.dien_quan_ly_ma=nhom.map(id=>(NHOM_LIST.find(n=>n.id===id)||{}).short).filter(Boolean).join(", ");
+  NHOM_LIST.forEach(n=>{out["x_"+n.id]=nhom.includes(n.id)?"X":"";});
+  out.tien_an_tien_su=rec.tien_an_ct||[rec.tien_an?"Tiền án":"",rec.tien_su?"Tiền sự":""].filter(Boolean).join(", ")||"";
+  out.so_luot_goi_hoi_dem=String(soLuot||"");
+  out.trang_thai=rec.da_loai?"Đã thanh loại":"Đang quản lý";
+  out.ngay_loai=rec.ngay_loai?fmtDate(rec.ngay_loai):"";
+  out.ly_do_loai=rec.ly_do_loai||"";
+  // ── Placeholder chung (để dùng được cả bên trong vòng lặp) ──
+  Object.assign(out,buildTemplateGlobals(ctx));
   return out;
 }
 
@@ -7225,11 +7967,15 @@ function buildTemplateData(rec){
 function TemplateFillModal({onClose,toast,doiTuong}){
   const [tuNgay,setTuNgay]=useState("");
   const [denNgay,setDenNgay]=useState("");
+  const [nhomLoc,setNhomLoc]=useState("");   // "" = tất cả các diện
   const [fileName,setFileName]=useState("");
   const [busy,setBusy]=useState(false);
   const fileInputRef=useRef();
 
-  const matched=useMemo(()=>filterByDateRange(doiTuong.filter(r=>!r.da_loai),tuNgay,denNgay),[doiTuong,tuNgay,denNgay]);
+  const matched=useMemo(()=>{
+    const base=doiTuong.filter(r=>!r.da_loai&&(!nhomLoc||(r.nhom||[]).includes(nhomLoc)));
+    return filterByDateRange(base,tuNgay,denNgay);
+  },[doiTuong,tuNgay,denNgay,nhomLoc]);
 
   const pickFile=()=>fileInputRef.current&&fileInputRef.current.click();
 
@@ -7242,14 +7988,9 @@ function TemplateFillModal({onClose,toast,doiTuong}){
       try{
         const zip=new window.PizZip(e.target.result);
         const doc=new window.docxtemplater(zip,{paragraphLoop:true,linebreaks:true,delimiters:{start:"{{",end:"}}"},nullGetter:()=>""});
-        const items=matched.map(buildTemplateData);
-        doc.render({
-          items,
-          so_luong:String(items.length),
-          tu_ngay:tuNgay?fmtDate(tuNgay):"Không giới hạn",
-          den_ngay:denNgay?fmtDate(denNgay):"Không giới hạn",
-          ngay_xuat:fmtDate(new Date().toISOString().slice(0,10)),
-        });
+        const ctx={soLuong:matched.length,tuNgay,denNgay};
+        const items=matched.map((r,i)=>buildTemplateData(r,i,ctx));
+        doc.render({items,...buildTemplateGlobals(ctx)});
         const out=doc.getZip().generate({type:"blob",mimeType:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
         const url=URL.createObjectURL(out);
         const a=document.createElement("a");
@@ -7294,13 +8035,30 @@ function TemplateFillModal({onClose,toast,doiTuong}){
         </div>
         <div style={{padding:"18px 20px",overflowY:"auto"}}>
           {/* Bước 1: chọn khoảng ngày */}
-          <div style={{fontSize:12.5,fontWeight:700,color:"#1e3a6e",marginBottom:6}}>Bước 1 – Chọn khoảng ngày cần xuất</div>
+          <div style={{fontSize:12.5,fontWeight:700,color:"#1e3a6e",marginBottom:6}}>Bước 1 – Chọn diện quản lý và khoảng ngày vào sổ</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {[{id:"",lbl:"Tất cả các diện",icon:"👥"},...NHOM_LIST].map(n=>(
+              <button key={n.id||"all"} className="btn btn-sm"
+                style={{background:nhomLoc===n.id?"#1e3a6e":"#fff",color:nhomLoc===n.id?"#fff":"#1e3a6e",
+                  border:"1px solid #c7d2fe",fontSize:11.5}}
+                onClick={()=>setNhomLoc(n.id)}>{n.icon} {n.lbl}</button>
+            ))}
+          </div>
           <DateRangeFilterBox tuNgay={tuNgay} setTuNgay={setTuNgay} denNgay={denNgay} setDenNgay={setDenNgay} count={matched.length}/>
 
           {/* Bước 2: mở file mẫu */}
           <div style={{fontSize:12.5,fontWeight:700,color:"#1e3a6e",marginBottom:6}}>Bước 2 – Mở file mẫu Word (.docx)</div>
           <div style={{background:"#fff9e6",border:"1px solid #f0d878",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11.5,lineHeight:1.6,color:"#7c5c00"}}>
-            ⚠️ File mẫu cần có 1 <b>bảng (table)</b> với 1 dòng dữ liệu mẫu được bọc trong cặp thẻ lặp <code>{"{{#items}}"}</code> ... <code>{"{{/items}}"}</code> (thẻ mở đặt ở ô đầu dòng, thẻ đóng đặt ở ô cuối dòng). Bên trong dòng đó, chèn placeholder theo tên trường như bình thường, VD: <code>{"{{ho_ten}}"}</code>, <code>{"{{cccd}}"}</code> (dùng danh sách ở nút "🏷️ Tạo Placeholder"). Ngoài bảng có thể dùng thêm <code>{"{{so_luong}}"}</code>, <code>{"{{tu_ngay}}"}</code>, <code>{"{{den_ngay}}"}</code>, <code>{"{{ngay_xuat}}"}</code>.
+            ⚠️ File mẫu cần có 1 <b>bảng (table)</b> với 1 dòng dữ liệu mẫu bọc trong cặp thẻ lặp
+            <code>{"{{#items}}"}</code> … <code>{"{{/items}}"}</code> (thẻ mở đặt ở ô đầu dòng, thẻ đóng ở ô cuối dòng).
+            Trong dòng đó chèn placeholder theo tên trường, VD: <code>{"{{stt}}"}</code>, <code>{"{{ho_ten}}"}</code>,
+            <code>{"{{ngay_sinh}}"}</code>, <code>{"{{cccd}}"}</code> (xem đầy đủ ở nút "🏷️ Tạo Placeholder").
+            <br/>✅ Trong dòng lặp dùng được cả placeholder chung: <code>{"{{don_vi}}"}</code>, <code>{"{{ky_bao_cao}}"}</code>…
+            <br/>✅ Ngoài bảng (tiêu đề, chữ ký) dùng: <code>{"{{so_luong}}"}</code>, <code>{"{{tu_ngay}}"}</code>,
+            <code>{"{{den_ngay}}"}</code>, <code>{"{{ky_bao_cao}}"}</code>, <code>{"{{ngay_xuat}}"}</code>,
+            <code>{"{{don_vi}}"}</code>, <code>{"{{cap_tren}}"}</code>.
+            <br/>⚠️ Lưu ý Word hay cắt placeholder thành nhiều đoạn khi gõ chèn giữa chừng — nên gõ liền một mạch
+            <code>{"{{ho_ten}}"}</code> hoặc dán từ nút copy trong danh sách placeholder.
           </div>
           <input ref={fileInputRef} type="file" accept=".docx" style={{display:"none"}} onChange={onFileChosen}/>
           <button className="btn btn-green" style={{width:"100%"}} disabled={matched.length===0||busy} onClick={pickFile}>
@@ -7316,86 +8074,143 @@ function TemplateFillModal({onClose,toast,doiTuong}){
 // ── Điền placeholder {{key}} vào mọi ô chuỗi của workbook Excel (giữ nguyên định dạng gốc) ──
 // Điền placeholder {{key}} vào 1 dòng mẫu (chứa {{...}}) rồi nhân dòng đó cho từng đối tượng trong danh sách.
 // Các dòng bên dưới dòng mẫu (nếu có, VD dòng tổng) sẽ được đẩy xuống tương ứng, giữ nguyên style từng ô.
-function fillExcelBulk(wb,dataList){
-  const sheetName=wb.SheetNames[0];
-  const ws=wb.Sheets[sheetName];
-  if(!ws||!ws["!ref"])throw new Error("File mẫu không có dữ liệu.");
-  const range=XLSX.utils.decode_range(ws["!ref"]);
+function fillExcelBulk(wb,dataList,globals){
+  const RE=/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+  const G=globals||{};
+  const apply=(txt,obj)=>String(txt).replace(RE,(m,k)=>
+    Object.prototype.hasOwnProperty.call(obj,k)?String(obj[k]==null?"":obj[k]):
+    (Object.prototype.hasOwnProperty.call(G,k)?String(G[k]==null?"":G[k]):""));
+  let totalFilled=0,sheetsDone=0;
 
-  // 1) Tìm dòng đầu tiên có ô chứa placeholder {{...}} — dùng làm dòng mẫu để nhân bản
-  let templateRow=-1;
-  for(let R=range.s.r;R<=range.e.r&&templateRow===-1;R++){
-    for(let C=range.s.c;C<=range.e.c;C++){
-      const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
-      if(cell&&typeof cell.v==="string"&&cell.v.indexOf("{{")!==-1){templateRow=R;break;}
+  wb.SheetNames.forEach(sheetName=>{
+    const ws=wb.Sheets[sheetName];
+    if(!ws||!ws["!ref"])return;
+    const range=XLSX.utils.decode_range(ws["!ref"]);
+
+    // 1) Tìm dòng mẫu: dòng ĐẦU TIÊN có ô chứa placeholder của TRƯỜNG ĐỐI TƯỢNG
+    //    (placeholder chung như {{don_vi}}, {{ngay_xuat}} không được coi là dòng mẫu,
+    //    nếu không tiêu đề văn bản sẽ bị nhân bản theo số đối tượng).
+    let templateRow=-1;
+    for(let R=range.s.r;R<=range.e.r&&templateRow===-1;R++){
+      for(let C=range.s.c;C<=range.e.c;C++){
+        const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
+        if(!cell||typeof cell.v!=="string")continue;
+        let m;RE.lastIndex=0;
+        while((m=RE.exec(cell.v))){
+          if(!Object.prototype.hasOwnProperty.call(G,m[1])){templateRow=R;break;}
+        }
+        if(templateRow>=0)break;
+      }
     }
-  }
-  if(templateRow===-1)throw new Error("Không tìm thấy dòng chứa placeholder {{...}} trong file mẫu.");
 
-  // 2) Lưu lại các ô của dòng mẫu (giữ style)
-  const templateCells={};
-  for(let C=range.s.c;C<=range.e.c;C++){
-    const addr=XLSX.utils.encode_cell({r:templateRow,c:C});
-    if(ws[addr])templateCells[C]=ws[addr];
-  }
+    // 2) Không có dòng mẫu → chỉ thay các placeholder chung rồi sang sheet khác
+    if(templateRow===-1){
+      Object.keys(ws).forEach(addr=>{
+        if(addr[0]==="!")return;
+        const cell=ws[addr];
+        if(cell&&typeof cell.v==="string"&&cell.v.indexOf("{{")!==-1){
+          cell.v=apply(cell.v,G);cell.t="s";if(cell.f)delete cell.f;if(cell.w)delete cell.w;
+        }
+      });
+      return;
+    }
 
-  const n=dataList.length;
-  const shift=n-1;
+    // 3) Lưu lại các ô của dòng mẫu (giữ nguyên style), chiều cao và merge nằm trong dòng mẫu
+    const templateCells={};
+    for(let C=range.s.c;C<=range.e.c;C++){
+      const addr=XLSX.utils.encode_cell({r:templateRow,c:C});
+      if(ws[addr])templateCells[C]=ws[addr];
+    }
+    const tplHeight=(ws["!rows"]&&ws["!rows"][templateRow])?{...ws["!rows"][templateRow]}:null;
+    const tplMerges=(ws["!merges"]||[]).filter(m=>m.s.r===templateRow&&m.e.r===templateRow)
+      .map(m=>({c0:m.s.c,c1:m.e.c}));
 
-  // 3) Nếu có nhiều hơn 1 đối tượng, đẩy các dòng NẰM DƯỚI dòng mẫu xuống để chừa chỗ
-  if(shift>0){
-    const moved={};
+    const n=Math.max(dataList.length,1);
+    const shift=n-1;
+
+    // 4) Đẩy các dòng nằm DƯỚI dòng mẫu xuống để chừa chỗ
+    if(shift>0){
+      const moved={};
+      Object.keys(ws).forEach(addr=>{
+        if(addr[0]==="!")return;
+        const c=XLSX.utils.decode_cell(addr);
+        if(c.r>templateRow){
+          moved[XLSX.utils.encode_cell({r:c.r+shift,c:c.c})]=ws[addr];
+          delete ws[addr];
+        }
+      });
+      Object.assign(ws,moved);
+      if(ws["!merges"]){
+        ws["!merges"]=ws["!merges"].map(m=>({
+          s:{r:m.s.r>templateRow?m.s.r+shift:m.s.r,c:m.s.c},
+          e:{r:m.e.r>templateRow?m.e.r+shift:m.e.r,c:m.e.c},
+        }));
+      }
+      if(ws["!rows"]&&ws["!rows"].length>templateRow){
+        const rows=ws["!rows"];
+        const head=rows.slice(0,templateRow+1);
+        const tail=rows.slice(templateRow+1);
+        ws["!rows"]=[...head,...Array(shift).fill(tplHeight||undefined),...tail];
+      }
+    }
+
+    // 5) Ghi dữ liệu từng đối tượng, giữ nguyên style ô mẫu; nhân bản cả merge của dòng mẫu
+    const merges=ws["!merges"]||[];
+    dataList.forEach((dataObj,idx)=>{
+      const R=templateRow+idx;
+      Object.keys(templateCells).forEach(cKeyStr=>{
+        const C=Number(cKeyStr);
+        const tmplCell=templateCells[C];
+        const addr=XLSX.utils.encode_cell({r:R,c:C});
+        const newCell=Object.assign({},tmplCell);
+        if(typeof tmplCell.v==="string"){
+          newCell.v=apply(tmplCell.v,dataObj);
+          newCell.t="s";
+          if(newCell.f)delete newCell.f;
+          if(newCell.w)delete newCell.w;
+        }
+        ws[addr]=newCell;
+      });
+      if(idx>0&&tplMerges.length)
+        tplMerges.forEach(m=>merges.push({s:{r:R,c:m.c0},e:{r:R,c:m.c1}}));
+      if(tplHeight){ws["!rows"]=ws["!rows"]||[];ws["!rows"][R]=ws["!rows"][R]||{...tplHeight};}
+    });
+    if(tplMerges.length)ws["!merges"]=merges;
+
+    // 6) Thay placeholder chung ở phần còn lại của sheet (tiêu đề, kỳ báo cáo, chữ ký…)
     Object.keys(ws).forEach(addr=>{
       if(addr[0]==="!")return;
-      const c=XLSX.utils.decode_cell(addr);
-      if(c.r>templateRow){
-        moved[XLSX.utils.encode_cell({r:c.r+shift,c:c.c})]=ws[addr];
-        delete ws[addr];
+      const cRef=XLSX.utils.decode_cell(addr);
+      if(cRef.r>=templateRow&&cRef.r<templateRow+dataList.length)return; // vùng dữ liệu đã xử lý
+      const cell=ws[addr];
+      if(cell&&typeof cell.v==="string"&&cell.v.indexOf("{{")!==-1){
+        cell.v=apply(cell.v,G);cell.t="s";if(cell.f)delete cell.f;if(cell.w)delete cell.w;
       }
     });
-    Object.assign(ws,moved);
-    if(ws["!merges"]){
-      ws["!merges"]=ws["!merges"].map(m=>({
-        s:{r:m.s.r>templateRow?m.s.r+shift:m.s.r,c:m.s.c},
-        e:{r:m.e.r>templateRow?m.e.r+shift:m.e.r,c:m.e.c},
-      }));
-    }
-  }
 
-  // 4) Ghi dữ liệu từng đối tượng vào các dòng bắt đầu từ dòng mẫu, thay placeholder, giữ nguyên style ô
-  dataList.forEach((dataObj,idx)=>{
-    const R=templateRow+idx;
-    Object.keys(templateCells).forEach(cKeyStr=>{
-      const C=Number(cKeyStr);
-      const tmplCell=templateCells[C];
-      const addr=XLSX.utils.encode_cell({r:R,c:C});
-      const newCell=Object.assign({},tmplCell);
-      if(typeof tmplCell.v==="string"){
-        newCell.v=tmplCell.v.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,(m,k)=>
-          Object.prototype.hasOwnProperty.call(dataObj,k)?dataObj[k]:"");
-        newCell.t="s";
-        if(newCell.f)delete newCell.f;
-      }
-      ws[addr]=newCell;
-    });
+    // 7) Cập nhật lại vùng dữ liệu (!ref)
+    const newMaxRow=Math.max(range.e.r+Math.max(shift,0),templateRow+dataList.length-1);
+    ws["!ref"]=XLSX.utils.encode_range({s:{r:range.s.r,c:range.s.c},e:{r:newMaxRow,c:range.e.c}});
+    totalFilled=dataList.length;sheetsDone++;
   });
 
-  // 5) Cập nhật lại vùng dữ liệu (!ref) cho khớp số dòng mới
-  const newMaxRow=Math.max(range.e.r+Math.max(shift,0),templateRow+n-1);
-  ws["!ref"]=XLSX.utils.encode_range({s:{r:range.s.r,c:range.s.c},e:{r:newMaxRow,c:range.e.c}});
-
-  return n;
+  if(!sheetsDone)throw new Error("Không tìm thấy ô nào chứa placeholder {{...}} trong file mẫu. Hãy chèn placeholder theo danh sách ở nút \"🏷️ Tạo Placeholder\".");
+  return totalFilled;
 }
 
 // ── Modal: chọn khoảng ngày + mở file mẫu Excel (.xlsx) chứa 1 dòng placeholder {{...}} để tự động nhân bản & điền hàng loạt ──
 function ExcelTemplateFillModal({onClose,toast,doiTuong}){
   const [tuNgay,setTuNgay]=useState("");
   const [denNgay,setDenNgay]=useState("");
+  const [nhomLoc,setNhomLoc]=useState("");   // "" = tất cả các diện
   const [fileName,setFileName]=useState("");
   const [busy,setBusy]=useState(false);
   const fileInputRef=useRef();
 
-  const matched=useMemo(()=>filterByDateRange(doiTuong.filter(r=>!r.da_loai),tuNgay,denNgay),[doiTuong,tuNgay,denNgay]);
+  const matched=useMemo(()=>{
+    const base=doiTuong.filter(r=>!r.da_loai&&(!nhomLoc||(r.nhom||[]).includes(nhomLoc)));
+    return filterByDateRange(base,tuNgay,denNgay);
+  },[doiTuong,tuNgay,denNgay,nhomLoc]);
 
   const pickFile=()=>fileInputRef.current&&fileInputRef.current.click();
 
@@ -7407,8 +8222,9 @@ function ExcelTemplateFillModal({onClose,toast,doiTuong}){
     reader.onload=(e)=>{
       try{
         const wb=XLSX.read(e.target.result,{type:"array",cellStyles:true,cellNF:true});
-        const dataList=matched.map(buildTemplateData);
-        const n=fillExcelBulk(wb,dataList);
+        const ctx={soLuong:matched.length,tuNgay,denNgay};
+        const dataList=matched.map((r,i)=>buildTemplateData(r,i,ctx));
+        const n=fillExcelBulk(wb,dataList,buildTemplateGlobals(ctx));
         const out=XLSX.write(wb,{bookType:"xlsx",type:"array",cellStyles:true});
         const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
         const url=URL.createObjectURL(blob);
@@ -7451,13 +8267,27 @@ function ExcelTemplateFillModal({onClose,toast,doiTuong}){
         </div>
         <div style={{padding:"18px 20px",overflowY:"auto"}}>
           {/* Bước 1: chọn khoảng ngày */}
-          <div style={{fontSize:12.5,fontWeight:700,color:"#7c3f00",marginBottom:6}}>Bước 1 – Chọn khoảng ngày cần xuất</div>
+          <div style={{fontSize:12.5,fontWeight:700,color:"#7c3f00",marginBottom:6}}>Bước 1 – Chọn diện quản lý và khoảng ngày vào sổ</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {[{id:"",lbl:"Tất cả các diện",icon:"👥"},...NHOM_LIST].map(n=>(
+              <button key={n.id||"all"} className="btn btn-sm"
+                style={{background:nhomLoc===n.id?"#f57c00":"#fff",color:nhomLoc===n.id?"#fff":"#7c3f00",
+                  border:"1px solid #f0d878",fontSize:11.5}}
+                onClick={()=>setNhomLoc(n.id)}>{n.icon} {n.lbl}</button>
+            ))}
+          </div>
           <DateRangeFilterBox tuNgay={tuNgay} setTuNgay={setTuNgay} denNgay={denNgay} setDenNgay={setDenNgay} count={matched.length} accent="#fff7ed"/>
 
           {/* Bước 2: mở file mẫu */}
           <div style={{fontSize:12.5,fontWeight:700,color:"#7c3f00",marginBottom:6}}>Bước 2 – Mở file mẫu Excel (.xlsx)</div>
           <div style={{background:"#fff9e6",border:"1px solid #f0d878",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:11.5,lineHeight:1.6,color:"#7c5c00"}}>
-            ⚠️ File mẫu cần có <b>1 dòng mẫu duy nhất</b> chứa placeholder dạng <code>{"{{ten_truong}}"}</code> trong các ô cột cần điền (dùng danh sách ở nút "🏷️ Tạo Placeholder" để lấy đúng tên trường). Hệ thống sẽ tự nhân dòng này cho từng đối tượng phù hợp, giữ nguyên định dạng ô/viền/màu. Nếu file có dòng tổng ở dưới, dòng đó sẽ tự đẩy xuống.
+            ⚠️ File mẫu cần có <b>1 dòng mẫu</b> chứa placeholder dạng <code>{"{{ten_truong}}"}</code> ở các ô cột cần điền
+            (dùng danh sách ở nút "🏷️ Tạo Placeholder" để lấy đúng tên trường). Hệ thống tự nhân dòng đó cho từng đối tượng,
+            giữ nguyên định dạng ô/viền/màu/chiều cao và cả ô đã gộp trong dòng; các dòng bên dưới (dòng tổng, chữ ký) tự đẩy xuống.
+            <br/>✅ Đánh số thứ tự tự động bằng <code>{"{{stt}}"}</code>.
+            <br/>✅ Các placeholder chung như <code>{"{{don_vi}}"}</code>, <code>{"{{ky_bao_cao}}"}</code>, <code>{"{{so_luong}}"}</code>,
+            <code>{"{{ngay_xuat}}"}</code> đặt ở tiêu đề/chữ ký cũng được điền, và <b>không</b> làm nhân dòng.
+            <br/>✅ Xử lý được nhiều sheet trong cùng một file mẫu.
           </div>
           <input ref={fileInputRef} type="file" accept=".xlsx" style={{display:"none"}} onChange={onFileChosen}/>
           <button className="btn btn-sm" style={{width:"100%",justifyContent:"center",background:"#f57c00",color:"#fff",padding:"9px"}} disabled={matched.length===0||busy} onClick={pickFile}>
@@ -7527,12 +8357,18 @@ function clearDataMerges(ws,startRow){
 function clearPlaceholderRows(ws,startRow){
   if(!ws["!ref"])return;
   const range=XLSX.utils.decode_range(ws["!ref"]);
-  for(let r=startRow;r<=Math.min(range.e.r,startRow+15);r++){
-    let isPH=false;
-    for(let c=0;c<=Math.min(range.e.c,4);c++){
-      const v=String((ws[cellRef(r,c)]||{}).v||"").trim().toLowerCase();
-      if(v==="không"||v==="-"||v==="...") {isPH=true;break;}
+  for(let r=startRow;r<=Math.min(range.e.r,startRow+40);r++){
+    let isPH=false,hasSign=false;
+    for(let c=0;c<=Math.min(range.e.c,6);c++){
+      const raw=(ws[cellRef(r,c)]||{}).v;
+      // Lưu ý: số 0 là giá trị hợp lệ nên không dùng (v||"") — sẽ mất dòng mẫu toàn số 0
+      const v=String(raw==null?"":raw).trim().toLowerCase();
+      if(!v)continue;
+      // Không đụng tới khối chữ ký / ghi chú ở cuối biểu
+      if(/trưởng|cán bộ|thủ trưởng|lãnh đạo|ghi chú|ngày .* tháng|tổng cộng|tổng số/.test(v)){hasSign=true;break;}
+      if(v==="không"||v==="-"||v==="..."||v==="…"||/^\(?\d+\)?$/.test(v))isPH=true;
     }
+    if(hasSign)break;
     if(isPH) for(let c=0;c<=range.e.c;c++) delete ws[cellRef(r,c)];
   }
 }
@@ -7617,7 +8453,7 @@ function scanHeader(ws){
     }
 
     // Hàng số thứ tự: tất cả giá trị là số hoặc dạng (1)(2)
-    const isNumTT=vals.every(v=>/^[\(\d\)\.]+$/.test(v));
+    const isNumTT=vals.length>2&&vals.every(v=>/^\(?-?\d+\)?\.?$/.test(v));
 
     // Hàng header: có border HOẶC fill HOẶC chứa "họ" "tên" "ngày" "địa chỉ"
     const headerKW=["họ","tên","ngày","địa chỉ","cccd","khu phố","đơn vị","stt"];
@@ -7803,13 +8639,64 @@ function fillDataRows(ws,dataStartRow,rows,NC){
   ws["!ref"]=XLSX.utils.encode_range(nr);
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// ĐỊNH VỊ DÒNG DỮ LIỆU ĐẦU TIÊN CỦA BIỂU DANH SÁCH (v8.1)
+// Xác định theo cấu trúc thật của bảng thay vì đoán:
+//   - Hàng tiêu đề cột: có ô "STT"/"TT" và ít nhất 1 ô tiêu đề đặc trưng.
+//   - Bỏ qua các hàng tiêu đề phụ (ô STT trống nhưng các cột khác có chữ)
+//     và hàng đánh số cột "(1)(2)(3)" / "-1 -2 -3".
+//   - Hàng dữ liệu đầu tiên: hàng có STT là số, hoặc hàng trống, hoặc hàng
+//     chứa chữ "không"/"-" (placeholder của file mẫu — sẽ được xóa trước khi ghi).
+// ══════════════════════════════════════════════════════════════════════
+function locateListStart(ws){
+  if(!ws||!ws["!ref"])return null;
+  const range=XLSX.utils.decode_range(ws["!ref"]);
+  const maxC=Math.min(range.e.c,40);
+  const txt=(r,c)=>String((ws[cellRef(r,c)]||{}).v==null?"":(ws[cellRef(r,c)]||{}).v).replace(/\s+/g," ").trim();
+  const HDR_KW=/họ (và )?tên|tên băng nhóm|tên điểm|tên đối tượng|ngày thống kê|đơn vị|loại hình|năm sinh|khu phố|địa chỉ/i;
+  let headerRow=-1,cSTT=-1;
+  for(let r=0;r<=Math.min(range.e.r,20)&&headerRow<0;r++){
+    let stt=-1,kw=0;
+    for(let c=0;c<=maxC;c++){
+      const t=txt(r,c);if(!t)continue;
+      if(stt<0&&/^(stt|tt|số tt)$/i.test(t))stt=c;
+      if(HDR_KW.test(t))kw++;
+    }
+    if(stt>=0&&kw>=1){headerRow=r;cSTT=stt;}
+  }
+  if(headerRow<0)return null;
+  // Hàng ĐÁNH SỐ CỘT thực sự phải bắt đầu bằng (1)/1/-1 và toàn số.
+  // Hàng toàn số 0 trong file mẫu là DÒNG DỮ LIỆU MẪU (placeholder) chứ không
+  // phải hàng đánh số cột — trước đây bị bỏ qua khiến dữ liệu ghi lệch xuống dưới.
+  const isNumRow=r=>{
+    const cells=[];for(let c=0;c<=maxC;c++){const t=txt(r,c);if(t)cells.push(t);}
+    if(cells.length<=2)return false;
+    if(!cells.every(v=>/^\(?-?\d+\)?\.?$/.test(v)))return false;
+    return /^\(?-?1\)?\.?$/.test(cells[0]);
+  };
+  const rowHasText=r=>{
+    for(let c=0;c<=maxC;c++){if(/[a-zA-ZÀ-ỹ]/.test(txt(r,c)))return true;}
+    return false;
+  };
+  let r=headerRow+1;
+  const limit=Math.min(range.e.r,headerRow+6);
+  while(r<=limit){
+    if(isNumRow(r)){r++;continue;}                       // hàng đánh số cột
+    const a=txt(r,cSTT).toLowerCase();
+    if(!a&&rowHasText(r)){r++;continue;}                 // hàng tiêu đề phụ
+    break;                                               // hàng dữ liệu đầu tiên
+  }
+  return{headerRow,dataStart:r,cSTT};
+}
+
 // ── 6. Public API (dùng trong doFillTemplate) ─────────────────────────
 // Hàm duy nhất được gọi từ bên ngoài: tự scan → style → fill
 function fillTemplate(ws,rows){
   if(!ws||!ws["!ref"])return;
   // Scan cấu trúc header
   const info=scanHeader(ws);
-  const dataStart=info.dataStartRow>=0?info.dataStartRow:8;
+  const loc=locateListStart(ws);
+  const dataStart=loc?loc.dataStart:(info.dataStartRow>=0?info.dataStartRow:8);
   // Xóa merges và placeholder trong vùng data
   clearDataMerges(ws,dataStart);
   clearPlaceholderRows(ws,dataStart);
@@ -7860,7 +8747,9 @@ function detectTemplateType(wb){
   if(wbContains(wb,"người bị quản lý sau cai nghiện")&&wbContains(wb,"khu phố"))return"hd26ds_sc";
   if(wbContains(wb,"người nghiện ma túy")&&wbContains(wb,"khu phố")&&!wbContains(wb,"phụ lục 1b"))return"hd26ds_ng";
   if(wbContains(wb,"người sử dụng trái phép")&&wbContains(wb,"khu phố")&&!wbContains(wb,"phụ lục 1b"))return"hd26ds_sd";
-  if(wbContains(wb,"bm tổng")||wbContains(wb,"bm1")||names.some(n=>n.includes("hd26")||n.includes("tb03")))return"hd26";
+  if(wbContains(wb,"bm tổng")||wbContains(wb,"bm1")||
+     names.some(n=>n.includes("hd26")||n.includes("tb03")||n.includes("bmtổng")||n.includes("bmtong")||n.includes("bm1")||n.includes("bm2"))||
+     wbContains(wb,"hướng dẫn 26")||wbContains(wb,"26/hd-bca-c04"))return"hd26";
   if(wbContains(wb,"phụ lục 1b")||wbContains(wb,"pl1b")||names.some(n=>n.includes("pl1b")))return"tb136";
   if(names.some(n=>n.includes("pl1")||n.includes("pl2")||n.includes("pl3"))&&wbContains(wb,"tb136"))return"tb136";
   if(wbContains(wb,"b1")&&wbContains(wb,"rà soát")||names.some(n=>n.includes("483")||n.includes("tb807")||n.includes("b1")))return"tb807_thang";
@@ -7878,45 +8767,79 @@ function setPreserveStyle(ws,r,c,v){
             left:{style:"thin",color:{rgb:"000000"}},right:{style:"thin",color:{rgb:"000000"}}}};
   ws[ref]={...ex,v,t,s:style};
 }
-function getFillStartCol(ws,row){
-  if(!ws||!ws["!ref"])return 1;
+// ══════════════════════════════════════════════════════════════════════
+// ĐỊNH VỊ HÀNG SỐ LIỆU TRONG FILE MẪU (v8.1)
+// Trước đây hệ thống dò hàng bằng cách tìm chữ "phường/Tân Bình" ở 6 cột đầu
+// nên rất dễ trúng ngay hàng TIÊU ĐỀ "CÔNG AN PHƯỜNG TÂN BÌNH" và ghi số liệu
+// đè lên tiêu đề; đồng thời cột bắt đầu ghi bị tính thành cột A làm mất cột
+// STT và Đơn vị. Bản mới xác định theo cấu trúc bảng:
+//   1) Tìm HÀNG TIÊU ĐỀ CỘT: hàng có ô "STT"/"TT" và ô "Đơn vị"/"Địa phương".
+//   2) Cột đơn vị = cột chứa chữ "Đơn vị"; số liệu ghi từ cột ngay sau đó.
+//   3) Hàng số liệu = hàng đầu tiên BÊN DƯỚI khối tiêu đề có STT = 1
+//      (bỏ qua hàng đánh số cột "(1)(2)(3)" hoặc "-1 -2 -3").
+// ══════════════════════════════════════════════════════════════════════
+function locateStatRow(ws){
+  if(!ws||!ws["!ref"])return null;
   const range=XLSX.utils.decode_range(ws["!ref"]);
-  for(let c=0;c<=range.e.c;c++){
-    const cell=ws[cellRef(row,c)];
-    if(!cell||cell.v==null||String(cell.v).trim()==="")return c;
-    const v=String(cell.v).toLowerCase();
-    if(!v.includes("phường")&&!v.includes("tân bình")&&!v.includes("quận")&&
-       !v.includes("thành phố")&&v.trim()!=="")return c;
-  }
-  return 1;
-}
-function fillUnitRow(ws,vals,uname){
-  if(!ws||!ws["!ref"])return false;
-  const range=XLSX.utils.decode_range(ws["!ref"]);
-  let unitRow=-1;
-  for(let r=0;r<=range.e.r;r++){
-    for(let c=0;c<=Math.min(range.e.c,5);c++){
-      const v=String((ws[cellRef(r,c)]||{}).v||"").toLowerCase();
-      if(v.includes("phường")||v.includes("tân bình")||v.includes(uname.toLowerCase().slice(0,8))){
-        unitRow=r;break;
-      }
+  const txt=(r,c)=>String((ws[cellRef(r,c)]||{}).v==null?"":(ws[cellRef(r,c)]||{}).v).replace(/\s+/g," ").trim();
+  const maxC=Math.min(range.e.c,40),maxR=Math.min(range.e.r,30);
+  let hdrRow=-1,cSTT=-1,cDV=-1;
+  for(let r=0;r<=maxR&&hdrRow<0;r++){
+    let stt=-1,dv=-1;
+    for(let c=0;c<=maxC;c++){
+      const t=txt(r,c).toLowerCase();
+      if(!t)continue;
+      if(stt<0&&/^(stt|tt|số tt)$/.test(t))stt=c;
+      if(dv<0&&/^(đơn vị|đơn vị.*|địa phương|tỉnh, thành phố)$/.test(t)&&!/công an (tp|thành phố)/.test(t))dv=c;
     }
-    if(unitRow>=0)break;
+    if(stt>=0&&dv>=0){hdrRow=r;cSTT=stt;cDV=dv;}
   }
-  if(unitRow<0)return false;
-  const sc=getFillStartCol(ws,unitRow);
-  vals.forEach((v,i)=>{if(v!==null&&v!==undefined)setPreserveStyle(ws,unitRow,sc+i,v);});
+  if(hdrRow<0)return null;
+  const isNumRow=r=>{
+    const cells=[];
+    for(let c=0;c<=maxC;c++){const t=txt(r,c);if(t)cells.push(t);}
+    return cells.length>3&&cells.every(v=>/^\(?-?\d+\)?$/.test(v));
+  };
+  let dataRow=-1;
+  for(let r=hdrRow+1;r<=Math.min(range.e.r,hdrRow+8);r++){
+    if(isNumRow(r))continue;
+    const a=txt(r,cSTT),b=txt(r,cDV);
+    if(/^1$/.test(a)||(b&&!/^(phường\/xã|quận\/huyện|tỉnh|tp)$/i.test(b)&&!/^\(?\d+\)?$/.test(b))){dataRow=r;break;}
+  }
+  if(dataRow<0)return null;
+  return{hdrRow,dataRow,cSTT,cDV,startCol:cDV+1};
+}
+// Ghi số liệu vào hàng đơn vị: không ghi đè ô có công thức, giữ nguyên định dạng ô
+function fillUnitRow(ws,vals,uname){
+  const loc=locateStatRow(ws);
+  if(!loc)return false;
+  const{dataRow,cSTT,cDV,startCol}=loc;
+  const cur=k=>String((ws[cellRef(dataRow,k)]||{}).v||"").trim();
+  const isPH=v=>!v||/^(không|khong|k|-|\.\.\.|…)$/i.test(v);
+  if(isPH(cur(cSTT)))setPreserveStyle(ws,dataRow,cSTT,1);
+  if(isPH(cur(cDV)))setPreserveStyle(ws,dataRow,cDV,uname||CONFIG.donVi);
+  vals.forEach((v,i)=>{
+    if(v===null||v===undefined)return;
+    const ex=ws[cellRef(dataRow,startCol+i)]||{};
+    if(ex.f)return;                       // giữ nguyên ô có công thức =SUM()
+    setPreserveStyle(ws,dataRow,startCol+i,v);
+  });
   return true;
 }
-function smartFillRow(ws,unitRow,vals,maxCols){
-  const range=XLSX.utils.decode_range(ws["!ref"]||"A1");
-  let startC=1;
-  for(let c=0;c<=Math.min(range.e.c,maxCols||50);c++){
-    const cell=ws[cellRef(unitRow,c)];
-    const v=String((cell||{}).v||"").toLowerCase();
-    if(v.includes("phường")||v.includes("tân bình")){startC=c+1;break;}
-  }
-  vals.forEach((v,i)=>{if(v!==null&&v!==undefined)setPreserveStyle(ws,unitRow,startC+i,v);});
+function smartFillRow(ws,unitRow,vals){
+  const loc=locateStatRow(ws);
+  const startC=loc?loc.startCol:2;
+  const r=(unitRow>=0?unitRow:(loc?loc.dataRow:-1));
+  if(r<0)return false;
+  vals.forEach((v,i)=>{if(v!==null&&v!==undefined)setPreserveStyle(ws,r,startC+i,v);});
+  return true;
+}
+// findRow trả về -1 khi không thấy; -1 lại là giá trị "truthy" nên các chỗ dùng
+// findRow(...)||fallback trước đây luôn nhận -1 → ghi vào hàng âm, hỏng file.
+function findRowOr(ws,keywords,fallback){
+  const list=Array.isArray(keywords)?keywords:[keywords];
+  for(const kw of list){const r=findRow(ws,kw);if(r>=0)return r;}
+  return fallback;
 }
 
 
@@ -7924,19 +8847,23 @@ function smartFillRow(ws,unitRow,vals,maxCols){
 // Xóa merge cells trong vùng data (từ startRow trở xuống) trước khi ghi
 function doFillTemplate(wb,data,dr){
   const LOG=[];
-  const allSD=data.su_dung.filter(r=>!r.da_loai);
-  const allNG=data.nghien.filter(r=>!r.da_loai);
-  const allSC=data.sau_cai.filter(r=>!r.da_loai);
-  const sdDN=allSD.filter(r=>r.cap_nhat_pm==="Đã nhập").length;
-  const ngDN=allNG.filter(r=>r.cap_nhat_pm==="Đã nhập").length;
-  const scDN=allSC.filter(r=>r.cap_nhat_pm==="Đã nhập").length;
-  const sdTTG=allSD.filter(r=>r.trong_nha_tam_giam).length;
-  const ngTTG=allNG.filter(r=>r.trong_nha_tam_giam).length;
-  const ngCSCN=allNG.filter(r=>r.trong_co_so_cai_nghien).length;
-  const b4=data.b4||{},b5=data.b5||{},b6=data.b6||{},b7=data.b7||{},b8=data.b8||{};
-  const t136=data.tb136||{},pl2t=data.pl2_tb136||{},pl3t=data.pl3_tb136||{},hd26=data.hd26||{};
-  const sdPS=filterActive(data.su_dung,dr.from,dr.to);
-  const ngPS=filterActive(data.nghien,dr.from,dr.to);
+  // ── Số liệu điền vào file mẫu lấy CÙNG MỘT NGUỒN với các biểu xuất thẳng:
+  //    engine computeStats (tự tính từ bản ghi, mốc tăng/giảm là NGÀY VÀO SỔ),
+  //    chỉ ghi đè bằng số nhập tay khi cán bộ đã nhập ở trang Số liệu báo cáo.
+  const S=computeStats(data,dr);
+  const M=(auto,man)=>{const o={...auto};Object.keys(man||{}).forEach(k=>{const v=man[k];if(v!==""&&v!==undefined&&v!==null)o[k]=v;});return o;};
+  const allSD=S.sd.act,allNG=S.ng.act,allSC=S.sc.act;
+  const sdDN=S.pm.sd.nhap,ngDN=S.pm.ng.nhap,scDN=S.pm.sc.nhap;
+  const sdTTG=S.noiO.sd_ttg,ngTTG=S.noiO.ng_ttg,ngCSCN=S.noiO.ng_cscn;
+  const b4=M(S.b4,data.b4),b7=M({},data.b7),b8=data.b8||{};
+  const b5a={ma_tuy_vu:S.b5.ma_tuy.vu,ma_tuy_dt:S.b5.ma_tuy.dt,gn_vu:S.b5.gn.vu,gn_dt:S.b5.gn.dt,
+    cy_vu:S.b5.cy.vu,cy_dt:S.b5.cy.dt,cuop_vu:S.b5.cuop.vu,cuop_dt:S.b5.cuop.dt,
+    trom_vu:S.b5.trom.vu,trom_dt:S.b5.trom.dt,gr_vu:S.b5.gr.vu,gr_dt:S.b5.gr.dt};
+  const b5=M(b5a,data.b5),b6=M(S.b6,data.b6);
+  const t136=M(S.tb136,data.tb136),pl2t=M(S.pl2,data.pl2_tb136),pl3t=M(S.pl3,data.pl3_tb136);
+  const hd26=M(S.hd26,data.hd26);
+  const sdPS=S.sd.psList.filter(r=>!r.da_loai);
+  const ngPS=S.ng.psList.filter(r=>!r.da_loai);
   const vpPS=filterActive(data.vppl,dr.from,dr.to,"ngay_ph_hv");
   const type=detectTemplateType(wb);
   const uname=CONFIG.donVi;
@@ -7945,30 +8872,73 @@ function doFillTemplate(wb,data,dr){
     const ws=wb.Sheets[sname];if(!ws)return;
     const sl=sname.toUpperCase().replace(/\s+/g,"");
     if(type==="tb807_tuan"){
-      if(sl.includes("B2")){const ok=fillUnitRow(ws,[allSD.length-sdTTG,sdDN,allNG.length-ngTTG-ngCSCN,ngDN,allSC.length,scDN],uname);if(ok)LOG.push("B2: SD "+allSD.length+" / NG "+allNG.length+" / SC "+allSC.length+" + PM ✓");}
+      // B2 (tuần): Tổng số & số đã cập nhật phần mềm của từng diện
+      if(sl.includes("B2")){const ok=fillUnitRow(ws,[allSD.length,sdDN,allNG.length,ngDN,allSC.length,scDN],uname);if(ok)LOG.push("B2 (tuần): SD "+allSD.length+"/"+sdDN+" · NG "+allNG.length+"/"+ngDN+" · SC "+allSC.length+"/"+scDN+" ✓");}
       if(sl.includes("B4")&&!sl.includes("B4-1")&&!sl.includes("B41")){const ok=fillUnitRow(ws,[b4.tong_xn||0,b4.duong_tinh||0,b4.dt_ngoai_ds||0,b4.xlhc_so_vu||0,b4.xlhc_dt||0,b4.xlhc_ngoai_ds||0,b4.hs_so_vu||0,b4.hs_dt||0,b4.hs_ngoai_ds||0],uname);if(ok)LOG.push("B4: Xét nghiệm ✓");}
-      if(sl.includes("B5")&&!sl.includes("B5-1")&&!sl.includes("B51")){const ok=fillUnitRow(ws,[b5.ma_tuy_vu||0,b5.ma_tuy_dt||0,b5.gn_vu||0,b5.gn_dt||0,b5.cy_vu||0,b5.cy_dt||0,b5.cuop_vu||0,b5.cuop_dt||0,b5.trom_vu||0,b5.trom_dt||0,b5.gr_vu||0,b5.gr_dt||0],uname);if(ok)LOG.push("B5: Vụ án ✓");}
-      if(sl.includes("B6")&&!sl.includes("B6-1")&&!sl.includes("B61")){const ok=fillUnitRow(ws,[b6.so_vu||0,b6.so_dt||0,b6.nam||0,b6.nu||0,b6.dang_cai||0,b6.trong_ql_sc||0,b6.trong_2nam_sc||0,b6.tu_y_bo_cai||0],uname);if(ok)LOG.push("B6: Điều 256a ✓");}
+      // B5 (tuần): chỉ có 5 nhóm tội hình sự (không có cột vụ án ma túy)
+      if(sl.includes("B5")&&!sl.includes("B5-1")&&!sl.includes("B51")){const ok=fillUnitRow(ws,[b5.gn_vu||0,b5.gn_dt||0,b5.cy_vu||0,b5.cy_dt||0,b5.cuop_vu||0,b5.cuop_dt||0,b5.trom_vu||0,b5.trom_dt||0,b5.gr_vu||0,b5.gr_dt||0],uname);if(ok)LOG.push("B5 (tuần): Vụ án hình sự ✓");}
+      // B6 (tuần): chỉ có Số vụ và Số đối tượng
+      if(sl.includes("B6")&&!sl.includes("B6-1")&&!sl.includes("B61")){const ok=fillUnitRow(ws,[b6.so_vu||0,b6.so_dt||0],uname);if(ok)LOG.push("B6 (tuần): Điều 256a ✓");}
       if(sl.includes("B7")&&!sl.includes("B7-1")){const ok=fillUnitRow(ws,[b7.so_tin||0,b7.chuyen_an||0,b7.vu_an||0,b7.dt_bi_bat||0,b7.xd_diem||0],uname);if(ok)LOG.push("B7: Nguồn tin ✓");}
     }
     if(type==="tb807_thang"){
-      if(sl.includes("B1")){const ok=fillUnitRow(ws,[allSD.length,allNG.length,allSC.length,(data.vu_an||[]).filter(r=>!r.da_loai).length,sdPS.length,ngPS.length,0,data.su_dung.filter(r=>r.da_loai).length,data.nghien.filter(r=>r.da_loai).length,data.sau_cai.filter(r=>r.da_loai).length],uname);if(ok)LOG.push("B1: Rà soát tổng hợp ✓");}
+      // B1: Đầu kỳ (SD/NG/SC) → Phát hiện mới → Thanh loại → Hiện đang quản lý
+      if(sl.includes("B1")){const ok=fillUnitRow(ws,[
+        S.sd.dauKy,S.ng.dauKy,S.sc.dauKy,
+        S.sd.psMoi,S.ng.psMoi,S.sc.psMoi,
+        S.sd.tl.tong,S.ng.tl.tong,S.sc.tl.tong,
+        S.sd.hienCon,S.ng.hienCon,S.sc.hienCon],uname);
+        if(ok)LOG.push("B1: đầu kỳ "+S.sd.dauKy+"/"+S.ng.dauKy+"/"+S.sc.dauKy+" → hiện còn "+S.sd.hienCon+"/"+S.ng.hienCon+"/"+S.sc.hienCon+" ✓");}
       if(sl.includes("B2")&&!sl.includes("B2-1")&&!sl.includes("B21")){const ok=fillUnitRow(ws,[allSD.length-sdTTG,sdTTG,allNG.length-ngTTG-ngCSCN,ngTTG,ngCSCN,allSC.length],uname);if(ok)LOG.push("B2: Phân loại SD/NG/SC ✓");}
-      if(sl.includes("B3")&&!sl.includes("B3-1")&&!sl.includes("B31")){const ok=fillUnitRow(ws,[sdDN,allSD.length,pct(sdDN,allSD.length)+"%",ngDN,allNG.length,pct(ngDN,allNG.length)+"%",scDN,allSC.length,pct(scDN,allSC.length)+"%"],uname);if(ok)LOG.push("B3: Tỷ lệ cập nhật PM ✓");}
+      if(sl.includes("B3")&&!sl.includes("B3-1")&&!sl.includes("B31")){
+        const lyDo=[...new Set(S.pm.dsChua.map(r=>r.ly_do_chua_cap_nhat_pm).filter(Boolean))].join("; ");
+        const ok=fillUnitRow(ws,[sdDN,allSD.length,pct(sdDN,allSD.length)+"%",ngDN,allNG.length,pct(ngDN,allNG.length)+"%",scDN,allSC.length,pct(scDN,allSC.length)+"%",lyDo],uname);
+        if(ok)LOG.push("B3: Tỷ lệ cập nhật PM ✓");}
       if(sl.includes("B3-1")||sl.includes("B31")){
-        const list=[...data.su_dung.filter(r=>!r.da_loai&&r.cap_nhat_pm!=="Đã nhập").map(r=>({...r,_d:"SD"})),...data.nghien.filter(r=>!r.da_loai&&r.cap_nhat_pm!=="Đã nhập").map(r=>({...r,_d:"NG"})),...data.sau_cai.filter(r=>!r.da_loai&&r.cap_nhat_pm!=="Đã nhập").map(r=>({...r,_d:"SC"}))];
-        const hr=findRow(ws,"họ tên")||findRow(ws,"họ và tên")||8;
-        fillTemplate(ws,list.map((r,i)=>[i+1,CONFIG.donVi,r.ho_ten,fmtDate(r.ngay_sinh),r.hktt,r.noi_o_ht,r._d,""]));
+        const list=S.pm.dsChua;
+        fillTemplate(ws,list.map((r,i)=>[i+1,CONFIG.donVi,r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",r.noi_o_ht||"",r._dien,r.ly_do_chua_cap_nhat_pm||""]));
         LOG.push("B3-1: "+list.length+" người chưa cập nhật PM ✓");
       }
-      if(sl.includes("B4")&&!sl.includes("B4-1")&&!sl.includes("B41")){const ok=fillUnitRow(ws,[b4.tong_xn||0,b4.duong_tinh||0,b4.dt_ngoai_ds||0,b4.xlhc_so_vu||0,b4.xlhc_dt||0,b4.xlhc_ngoai_ds||0,b4.hs_so_vu||0,b4.hs_dt||0,b4.hs_ngoai_ds||0],uname);if(ok)LOG.push("B4: Xét nghiệm ✓");}
-      if(sl.includes("B5")&&!sl.includes("B5-1")&&!sl.includes("B51")){const ok=fillUnitRow(ws,[b5.ma_tuy_vu||0,b5.ma_tuy_dt||0,b5.gn_vu||0,b5.gn_dt||0,b5.cy_vu||0,b5.cy_dt||0,b5.cuop_vu||0,b5.cuop_dt||0,b5.trom_vu||0,b5.trom_dt||0,b5.gr_vu||0,b5.gr_dt||0],uname);if(ok)LOG.push("B5: Vụ án ✓");}
-      if(sl.includes("B6")&&!sl.includes("B6-1")&&!sl.includes("B61")){const ok=fillUnitRow(ws,[b6.so_vu||0,b6.so_dt||0,b6.nam||0,b6.nu||0,b6.dang_cai||0,b6.trong_ql_sc||0,b6.trong_2nam_sc||0,b6.tu_y_bo_cai||0],uname);if(ok)LOG.push("B6: Điều 256a ✓");}
-      if(sl.includes("B7")&&!sl.includes("B7-1")){const ok=fillUnitRow(ws,[b7.so_tin||0,b7.chuyen_an||0,b7.vu_an||0,b7.dt_bi_bat||0,b7.xd_diem||0],uname);if(ok)LOG.push("B7: Nguồn tin ✓");}
+      // B4 (tháng): Hành chính (3 cột) + Hình sự, ma túy (3 cột)
+      if(sl.includes("B4")&&!sl.includes("B4-1")&&!sl.includes("B41")){const ok=fillUnitRow(ws,[b4.xlhc_so_vu||0,b4.xlhc_dt||0,b4.xlhc_ngoai_ds||0,b4.hs_so_vu||0,b4.hs_dt||0,b4.hs_ngoai_ds||0],uname);if(ok)LOG.push("B4 (tháng): dương tính hành chính/hình sự ✓");}
+      if(sl.includes("B4-1")||sl.includes("B41")){
+        fillTemplate(ws,S.b4.ds.map((r,i)=>[i+1,r.don_vi_ph_hv||CONFIG.donVi,r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+          r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||r.noi_o_ht||"",
+          (r.kt_qd_khoi_to_bc||r.kt_ngay_khoi_to_bc?"Khởi tố hình sự":(dv(r,"kq_xlhc_bpxp")?"Xử phạt VPHC – "+dv(r,"kq_xlhc_bpxp"):"Đang xử lý")),
+          r.ly_do_khong_trong_ds||""]));
+        LOG.push("B4-1: "+S.b4.ds.length+" đối tượng dương tính ✓");
+      }
+      if(sl.includes("B5")&&!sl.includes("B5-1")&&!sl.includes("B51")){const ok=fillUnitRow(ws,[b5.ma_tuy_vu||0,b5.ma_tuy_dt||0,b5.gn_vu||0,b5.gn_dt||0,b5.cy_vu||0,b5.cy_dt||0,b5.cuop_vu||0,b5.cuop_dt||0,b5.trom_vu||0,b5.trom_dt||0,b5.gr_vu||0,b5.gr_dt||0],uname);if(ok)LOG.push("B5 (tháng): Vụ án ✓");}
+      if(sl.includes("B5-1")||sl.includes("B51")){
+        fillTemplate(ws,S.b5.ds.map((r,i)=>[i+1,r.don_vi_ph_hv||CONFIG.donVi,r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+          r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||"",r.hanh_vi_chinh||r.hanh_vi_khac||"",
+          (r.kt_qd_khoi_to_bc?"Khởi tố hình sự":"Xử lý hành chính")]));
+        LOG.push("B5-1: "+S.b5.ds.length+" đối tượng gây án ✓");
+      }
+      if(sl.includes("B6")&&!sl.includes("B6-1")&&!sl.includes("B61")){const ok=fillUnitRow(ws,[b6.so_vu||0,b6.so_dt||0,b6.nam||0,b6.nu||0,b6.dang_cai||0,b6.trong_ql_sc||0,b6.trong_2nam_sc||0,b6.tu_y_bo_cai||0],uname);if(ok)LOG.push("B6 (tháng): Điều 256a ✓");}
+      if(sl.includes("B6-1")||sl.includes("B61")){
+        fillTemplate(ws,S.b6.ds.map((r,i)=>[i+1,r.don_vi_ph_hv||CONFIG.donVi,r.ho_ten||"",fmtDate(r.ngay_sinh),r.hktt||"",
+          r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru||"",boolX(r.d256a_dang_cai),boolX(r.d256a_trong_qlsc),
+          boolX(r.d256a_2nam_het_qlsc),boolX(r.d256a_2nam_tu_y_bo)]));
+        LOG.push("B6-1: "+S.b6.ds.length+" đối tượng Điều 256a ✓");
+      }
+      if(sl.includes("B7")&&!sl.includes("B7-1")){const ok=fillUnitRow(ws,[b7.so_tin||0,b7.chuyen_an||0,b7.vu_an||0,b7.dt_bi_bat||0,b7.xd_diem||0,b7.ghi_chu_b7||""],uname);if(ok)LOG.push("B7: Nguồn tin ✓");}
       if(sl.includes("B8")){
+        // Cột số liệu của B8 bắt đầu ở cột "Số tin" (sau cột "Cơ sở cai nghiện")
+        let startC=3;
+        (function(){
+          const rg=XLSX.utils.decode_range(ws["!ref"]||"A1");
+          for(let r=0;r<=Math.min(rg.e.r,10);r++)for(let c=0;c<=Math.min(rg.e.c,15);c++){
+            const t=String((ws[cellRef(r,c)]||{}).v||"").replace(/\s+/g," ").trim().toLowerCase();
+            if(/^số tin/.test(t)){startC=c;return;}
+          }
+        })();
         ["1","2","3","4","5","6"].forEach(n=>{
-          const row=findRow(ws,"số "+n)||findRow(ws,"cscn "+n)||findRow(ws,"ma túy số "+n);
-          if(row>=0){const k="cs"+n;const sc2=getFillStartCol(ws,row);[b8[k+"_so_tin"]||0,b8[k+"_chuyen_an"]||0,b8[k+"_vu_an"]||0,b8[k+"_dt_bi_bat"]||0,b8[k+"_xd_diem"]||0].forEach((v,i)=>setCell(ws,row,sc2+i,v));LOG.push("B8: CSCN"+n+" ✓");}
+          const row=findRowOr(ws,["cơ sở cai nghiện ma tuý số "+n,"cơ sở cai nghiện ma túy số "+n,"cscn ma túy số "+n,"số "+n+" thành phố"],-1);
+          if(row>=0){const k="cs"+n;
+            [b8[k+"_so_tin"]||0,b8[k+"_chuyen_an"]||0,b8[k+"_vu_an"]||0,b8[k+"_dt_bi_bat"]||0,b8[k+"_xd_diem"]||0]
+              .forEach((v,i)=>{const ex=ws[cellRef(row,startC+i)]||{};if(!ex.f)setPreserveStyle(ws,row,startC+i,v);});
+            LOG.push("B8: CSCN "+n+" ✓");}
         });
       }
     }
@@ -7992,8 +8962,10 @@ function doFillTemplate(wb,data,dr){
       // ── PL1: hàng Ma túy ở R9 (0-based=8), điền từ cột 2 (C=Số đầu kỳ) ──
       else if(sl.startsWith("PL1")||sl.includes("PHULUC1")){
         const cur=(t136.so_dau_ky||0)+(t136.ps_moi||0)-(t136.tl_tong||0);
-        // Tìm hàng "Ma túy" để điền số liệu (thường R9, 0-based=8)
-        const matuRow=findRow(ws,"ma túy")||findRow(ws,"matuy")||8;
+        // Tìm hàng "Ma túy" để điền số liệu (thường R10). findRow trả -1 khi không
+        // thấy nên phải dùng findRowOr, tránh ghi vào hàng âm làm hỏng file.
+        const matuRow=findRowOr(ws,["ma túy","ma tuý","matuy"],-1);
+        if(matuRow<0){LOG.push("PL1: ⚠️ không tìm thấy hàng \"Ma túy\" trong file mẫu");return;}
         const vals=[t136.so_dau_ky||0,t136.ps_moi||0,t136.tl_tong||0,t136.tl_khoi_to||0,t136.tl_xlhc||0,t136.tl_cai_bb||0,t136.tl_bo_di||0,t136.tl_tien_bo||0,t136.tl_khac||0,cur,t136.db_trong_xa||0,t136.db_lien_xa||0,t136.db_lien_tinh||0,t136.bp_theo_pl||0,t136.bp_suu_tra||0,t136.bp_hiem_nghi_ca||0,t136.bp_khac||0];
         // Điền từ cột C (index 2) - bỏ qua cột A(STT) và B(Lĩnh vực)
         const startCol=2;
@@ -8024,7 +8996,8 @@ function doFillTemplate(wb,data,dr){
       }
       // ── PL2: hàng Ma túy ở R9 (0-based=8) ──
       else if(sl.startsWith("PL2")){
-        const matuRow=findRow(ws,"ma túy")||8;
+        const matuRow=findRowOr(ws,["ma túy","ma tuý","matuy"],-1);
+        if(matuRow<0){LOG.push("PL2: ⚠️ không tìm thấy hàng \"Ma túy\" trong file mẫu");return;}
         const cur=(pl2t.bn_dau_ky||0)+(pl2t.bn_ps_moi||0)-(pl2t.bn_tl_tong||0);
         const vals=[pl2t.bn_dau_ky||0,pl2t.bn_ps_moi||0,pl2t.bn_tl_tong||0,pl2t.bn_tl_khoi_to||0,pl2t.bn_tl_xlhc||0,pl2t.bn_tl_tan_ra||0,pl2t.bn_tl_khac||0,cur,pl2t.bn_db_trong_xa||0,pl2t.bn_db_lien_xa||0,pl2t.bn_db_lien_tinh||0,pl2t.bn_ds_xlap_ca||0,pl2t.bn_ds_xac_lap_hn||0,pl2t.bn_ds_lap_kh||0,pl2t.bn_ds_khac||0];
         vals.forEach((v,i)=>{const ref=cellRef(matuRow,2+i);const ex=ws[ref]||{};if(!ex.f)setPreserveStyle(ws,matuRow,2+i,v);});
@@ -8045,9 +9018,15 @@ function doFillTemplate(wb,data,dr){
       }
       // ── PL3: hàng Ma túy ở R9 (0-based=8) ──
       else if(sl.startsWith("PL3")){
-        const matuRow=findRow(ws,"ma túy")||8;
-        const cur=(pl3t.diem_dau_ky||0)+(pl3t.diem_ps_moi||0)-(pl3t.diem_tl_tong||0);
-        const vals=[pl3t.diem_dau_ky||0,pl3t.diem_ps_moi||0,pl3t.diem_tl_tong||0,pl3t.diem_tl_khoi_to||0,pl3t.diem_tl_xlhc||0,pl3t.diem_tl_dung||0,pl3t.diem_tl_khac||0,cur,pl3t.diem_ql_to_chuc||0,pl3t.diem_ql_chua_chap||0];
+        const matuRow=findRowOr(ws,["ma túy","ma tuý","matuy"],-1);
+        if(matuRow<0){LOG.push("PL3: ⚠️ không tìm thấy hàng \"Ma túy\" trong file mẫu");return;}
+        // Cột J,K = số điểm hiện đang quản lý (tổ chức / chứa chấp); L,M = loại hình;
+        // N,O,P,Q = đối sách đang áp dụng
+        const vals=[pl3t.diem_dau_ky||0,pl3t.diem_ps_moi||0,pl3t.diem_tl_tong||0,pl3t.diem_tl_khoi_to||0,
+          pl3t.diem_tl_xlhc||0,pl3t.diem_tl_dung||0,pl3t.diem_tl_khac||0,
+          pl3t.diem_hien_tc||pl3t.diem_ql_to_chuc||0,pl3t.diem_hien_cc||pl3t.diem_ql_chua_chap||0,
+          pl3t.diem_ql_to_chuc||0,pl3t.diem_ql_chua_chap||0,
+          pl3t.diem_ds_kh||0,pl3t.diem_ds_ktxl||0,pl3t.diem_ds_theo_doi||0,pl3t.diem_ds_khac||0];
         vals.forEach((v,i)=>{const ref=cellRef(matuRow,2+i);const ex=ws[ref]||{};if(!ex.f)setPreserveStyle(ws,matuRow,2+i,v);});
         LOG.push("PL3: Điểm TC tổng ✓");
       }
@@ -8060,28 +9039,48 @@ function doFillTemplate(wb,data,dr){
         const ok=fillUnitRow(ws,[hd26.dt_ban_thang_truoc||0,hd26.diem_tc_thang_truoc||0,hd26.dt_ban_hien_con||0,hd26.diem_tc_hien_con||0,hd26.dt_ban_ps_moi||0,hd26.diem_tc_ps_moi||0,hd26.dt_ban_triet_xoa||0,hd26.dt_ban_khong_bh||0,hd26.dt_ban_vo_hieu||0,hd26.diem_tc_triet_xoa||0,hd26.diem_tc_khong_bh||0,hd26.diem_tc_vo_hieu||0,hd26.xl_tong_vu||0,hd26.xl_hs_tong_dt||0,hd26.xl_hs_tang_tru||0,hd26.xl_hs_tc_sd||0,hd26.xl_hs_cc_sd||0,hd26.xl_hs_sd||0,hd26.xl_hs_khac||0,hd26.xl_duong_tinh||0,hd26.xl_xlhc||0,hd26.dt_ql_phap_luat||0,hd26.dt_ql_nvu||0,hd26.dt_ql_giam_cau||0],uname);
         if(ok)LOG.push("BM Tổng HD26: 24 ô ✓");
       }
-      if(sl.includes("BM1")||sl.includes("BM2")){
-        const hr=findRow(ws,"họ tên")||findRow(ws,"địa chỉ")||9;
-        const all=(data.hd26_dt||[]).filter(r=>!r.da_loai);
-        fillTemplate(ws,all.map((r,i)=>[i+1,r.loai_hinh_hd26||"",r.ho_ten_ten_diem||"",r.dia_chi||"",r.don_vi_ql||CONFIG.donVi,fmtDate(r.thoi_gian_xet_duyet),fmtDate(r.han_dau_tranh),fmtDate(r.gia_han),boolX(r.ql_nv_st),boolX(r.ql_nv_hn),boolX(r.ql_nv_va),r.ghi_chu_hd26||""]));
-        LOG.push("BM1/BM2: "+all.length+" ĐT HD26 ✓");
+      // BM1 – BẢNG DANH SÁCH các diện quản lý (11 cột theo file mẫu)
+      if(sl.includes("BM1")){
+        const ban=S.hd26._ban.list,diem=S.hd26._diem.list;
+        const rowOf=(r,i)=>["",i+1,(r.ho_ten_ten_diem||"")+(r.dia_chi?"\n"+r.dia_chi:""),r.don_vi_ql||CONFIG.donVi,
+          fmtDate(r.thoi_gian_xet_duyet),fmtDate(r.han_dau_tranh),fmtDate(r.gia_han),
+          boolX(r.ql_nv_st),boolX(r.ql_nv_hn),boolX(r.ql_nv_va),r.ghi_chu_hd26||""];
+        const rows=[
+          ["I","Đối tượng mua, bán trái phép chất ma túy","","","","","","","","",""],
+          ...ban.map(rowOf),
+          ["","Tổng số: ",ban.length,"","","","","","","",""],
+          ["II","Điểm tổ chức sử dụng, chứa chấp việc sử dụng trái phép chất ma túy","","","","","","","","",""],
+          ...diem.map(rowOf),
+          ["","Tổng số: ",diem.length,"","","","","","","",""],
+        ];
+        fillTemplate(ws,rows);
+        LOG.push("BM1: "+ban.length+" đối tượng mua bán + "+diem.length+" điểm ✓");
+      }
+      // BM2 – BẢNG TỔNG HỢP kết quả đấu tranh (2 dòng: đối tượng mua bán / điểm)
+      else if(sl.includes("BM2")){
+        const rBan=findRowOr(ws,["đối tượng mua, bán","đối tượng mua bán"],-1);
+        const rDiem=findRowOr(ws,["điểm tổ chức sử dụng","điểm tổ chức, chứa chấp"],-1);
+        const wr=(row,vals)=>{if(row<0)return false;vals.forEach((v,i)=>{const ex=ws[cellRef(row,2+i)]||{};if(!ex.f)setPreserveStyle(ws,row,2+i,v);});return true;};
+        const okB=wr(rBan,hd26Bm2Vals(hd26Agg(S,hd26IsBan)));
+        const okD=wr(rDiem,hd26Bm2Vals(hd26Agg(S,r=>!hd26IsBan(r))));
+        LOG.push("BM2: kết quả đấu tranh "+(okB?"đối tượng mua bán ✓ ":"")+(okD?"điểm tổ chức, chứa chấp ✓":""));
       }
     }
     if(type==="qd28"){
       if(sl.includes("PL1")||sl.includes("SD")||sl.includes("SUDUNG")){
-        const hr=findRow(ws,"họ tên")||findRow(ws,"họ và tên")||8;
+        const hr=findRowOr(ws,["họ và tên","họ tên"],7);
         clearQD28Placeholder(ws,hr);
         fillTemplate(ws,sdPS.map((r,i)=>[i+1,r.phuong_xa||"Tân Bình",r.quan_huyen||CONFIG.quanHuyen,fmtDate(r.ngay_vao_so),r.ho_ten,fmtDate(r.ngay_sinh),r.gioi_tinh,r.hktt,r.noi_o_ht,r.cccd,r.trinh_do_hv,dv(r,"loai_ma_tuy"),r.qd_ql_so,r.qd_ql_tg,r.qd_xlhc_so,r.qd_xlhc_tg,boolX(r.co_mat),r.vang_mat,r.cap_nhat_pm,fmtDate(r.thoi_gian_ps)]));
         LOG.push("PL1 QĐ28: "+sdPS.length+" người SD ✓");
       }
       if(sl.includes("PL2")||sl.includes("NGHIEN")){
-        const hr=findRow(ws,"họ tên")||findRow(ws,"họ và tên")||8;
+        const hr=findRowOr(ws,["họ và tên","họ tên"],7);
         clearQD28Placeholder(ws,hr);
         fillTemplate(ws,ngPS.map((r,i)=>[i+1,r.phuong_xa||"Tân Bình",r.quan_huyen||CONFIG.quanHuyen,fmtDate(r.ngay_vao_so),r.ho_ten,fmtDate(r.ngay_sinh),r.gioi_tinh,r.hktt,r.noi_o_ht,r.cccd,r.trinh_do_hv,dv(r,"loai_ma_tuy"),r.phieu_xd_nghien,dv(r,"hinh_thuc_cai"),boolX(r.co_mat),r.vang_mat,r.cap_nhat_pm,fmtDate(r.thoi_gian_ps)]));
         LOG.push("PL2 QĐ28: "+ngPS.length+" người nghiện ✓");
       }
       if(sl.includes("PL3")||sl.includes("VPPL")||sl.includes("VPHP")){
-        const hr=findRow(ws,"họ tên")||findRow(ws,"họ và tên")||8;
+        const hr=findRowOr(ws,["họ và tên","họ tên"],7);
         clearQD28Placeholder(ws,hr);
         fillTemplate(ws,vpPS.map((r,i)=>[i+1,r.ho_ten,fmtDate(r.ngay_sinh),r.hktt,r.noi_o_truoc_bi_bat||r.dia_chi_cu_tru,fmtDate(r.kt_ngay_bat),r.trich_yeu||"",r.hanh_vi_chinh||"",dv(r,"kq_xlhc_bpxp"),fmtDate(r.ngay_ban_hanh_kq_xl),boolX(r.cu_tru_30ngay),r.ghi_chu_qd28||""]));
         LOG.push("PL3 QĐ28: "+vpPS.length+" VPPL ✓");
@@ -8431,7 +9430,7 @@ function SyncPage({data,toast}){
       if(LOG.length===0){toast("Không tìm thấy hàng đơn vị trong template. Kiểm tra tên '"+CONFIG.donVi+"' trong file.","error");setProcessing(null);return;}
       setLogs(p=>({...p,[tpl.id]:LOG}));
       const dt=new Date().toISOString().slice(0,10).replace(/-/g,"");
-      XLSX.writeFile(wb,tpl.name.replace(/\.(xlsx|xls)$/i,"")+"_FILLED_"+dt+".xlsx");
+      saveWorkbookA4(wb,tpl.name.replace(/\.(xlsx|xls)$/i,"")+"_FILLED_"+dt+".xlsx");
       toast("✅ Đã điền "+LOG.length+" sheet & tải xuống","success");
     }catch(err){toast("Lỗi: "+err.message,"error");}
     setProcessing(null);
@@ -9609,7 +10608,7 @@ function UnifiedPage({doiTuong,setDoiTuong,dateRange,toast}){
 
       {/* Modals */}
       {form&&(
-        <FormModal fields={F_UNIFIED} initial={form.rec}
+        <FormModal fields={F_UNIFIED} initial={form.rec} allRecords={doiTuong}
           title={form.mode==="add"?"＋ Thêm đối tượng mới":"✏️ Sửa thông tin đối tượng"}
           onSave={save} onClose={()=>setForm(null)}/>
       )}
@@ -9953,7 +10952,7 @@ function GroupViewPage({nhomId,doiTuong,setDoiTuong,dateRange,toast,khuPho,setKh
         </div>
       </div>
 
-      {form&&<FormModal fields={F_UNIFIED} initial={form.rec}
+      {form&&<FormModal fields={F_UNIFIED} initial={form.rec} allRecords={doiTuong} khuPhoList={khuPho}
         title={form.mode==="add"?`＋ Thêm – ${nhom?.lbl}`:`✏️ Sửa – ${nhom?.lbl}`}
         onSave={save} onClose={()=>setForm(null)}/>}
       {loaiRec&&<LoaiModal rec={loaiRec} onSave={loaiDT} onClose={()=>setLoaiRec(null)} currentNhomId={nhomId}/>}
@@ -10085,12 +11084,20 @@ function LoginPage({onLogin}){
   const tryLogin=()=>{
     setErr("");
     if(!pwd){setErr("Vui lòng nhập mật khẩu");return;}
-    if(pwd!==getAdminPwd()){setErr("Mật khẩu không đúng");return;}
+    const lock=pwdLockInfo();
+    if(lock.lockedFor>0){setErr(`Đã nhập sai quá nhiều lần – vui lòng thử lại sau ${lock.lockedFor} giây`);return;}
     setLoading(true);
-    setTimeout(()=>{
+    verifyAdminPwd(pwd).then(res=>{
+      if(!res.ok){
+        setLoading(false);
+        setErr(res.lockedFor>0?`Sai quá nhiều lần – thử lại sau ${res.lockedFor} giây`:"Mật khẩu không đúng");
+        return;
+      }
+      if(res.mustChange)
+        setTimeout(()=>alert("⚠️ Bạn đang dùng mật khẩu mặc định. Vào Tài khoản → Đổi mật khẩu để đặt mật khẩu riêng trước khi sử dụng chính thức."),600);
       if(remember)setSession(ADMIN_ACC);
       onLogin(ADMIN_ACC);
-    },400);
+    }).catch(()=>{setLoading(false);setErr("Không kiểm tra được mật khẩu trên trình duyệt này");});
   };
   const handleKey=e=>{if(e.key==="Enter")tryLogin();};
 
@@ -10160,12 +11167,18 @@ function SettingsPanel({currentUser,onLogout,onClose}){
 
   const handleChangePwd=()=>{
     if(!oldPwd||!newPwd||!confirmPwd){setMsg({text:"Vui lòng điền đầy đủ",ok:false});return;}
-    if(oldPwd!==getAdminPwd()){setMsg({text:"Mật khẩu hiện tại không đúng",ok:false});return;}
-    if(newPwd.length<6){setMsg({text:"Mật khẩu mới tối thiểu 6 ký tự",ok:false});return;}
+    if(newPwd.length<8){setMsg({text:"Mật khẩu mới tối thiểu 8 ký tự",ok:false});return;}
+    if(!/[a-zA-Z]/.test(newPwd)||!/[0-9]/.test(newPwd)){setMsg({text:"Mật khẩu mới phải có cả chữ và số",ok:false});return;}
+    if(newPwd===
+      "admin"){setMsg({text:"Không dùng mật khẩu mặc định",ok:false});return;}
     if(newPwd!==confirmPwd){setMsg({text:"Xác nhận mật khẩu không khớp",ok:false});return;}
-    setAdminPwd(newPwd);
-    setOldPwd("");setNewPwd("");setConfirmPwd("");
-    setMsg({text:"✅ Đổi mật khẩu thành công!",ok:true});
+    verifyAdminPwd(oldPwd).then(res=>{
+      if(!res.ok){setMsg({text:res.lockedFor>0?`Sai quá nhiều lần – thử lại sau ${res.lockedFor} giây`:"Mật khẩu hiện tại không đúng",ok:false});return;}
+      return setAdminPwd(newPwd).then(()=>{
+        setOldPwd("");setNewPwd("");setConfirmPwd("");
+        setMsg({text:"✅ Đổi mật khẩu thành công! Mật khẩu được lưu dưới dạng băm PBKDF2, không thể đọc ngược.",ok:true});
+      });
+    }).catch(()=>setMsg({text:"Lỗi khi đổi mật khẩu",ok:false}));
   };
 
   const inputSt=(err)=>({
@@ -10972,8 +11985,10 @@ function CauHinhPage({toast,onConfigChange}){
   // ── Màn hình khoá: yêu cầu đúng mật khẩu đăng nhập (getAdminPwd()) trước khi vào Cấu hình ──
   if(!unlocked){
     const tryUnlock=()=>{
-      if(lockPwd===getAdminPwd()){setUnlocked(true);setLockErr("");}
-      else{setLockErr("Mật khẩu không đúng");setLockPwd("");}
+      verifyAdminPwd(lockPwd).then(res=>{
+        if(res.ok){setUnlocked(true);setLockErr("");}
+        else{setLockErr(res.lockedFor>0?`Sai quá nhiều lần – thử lại sau ${res.lockedFor} giây`:"Mật khẩu không đúng");setLockPwd("");}
+      });
     };
     return(
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"60vh"}}>
@@ -11428,7 +12443,7 @@ function exportNghiepVuExcel(title,records,period,toast){
     });
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"BaoCao");
-    XLSX.writeFile(wb,`BaoCao_${title.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    saveWorkbookA4(wb,`BaoCao_${title.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
     toast("✅ Đã xuất báo cáo Excel!","success");
   }catch(e){toast("❌ Lỗi tạo báo cáo: "+e.message,"error");}
 }
@@ -11839,8 +12854,22 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
   );
 }
 
+// Thời gian không thao tác tối đa trước khi tự khóa phiên (phút)
+const IDLE_LOCK_MIN=15;
 function App(){
   const [currentUser,setCurrentUser]=useState(()=>getSession()||null);
+  // ── Tự động khóa khi rời máy: sau 15 phút không thao tác sẽ thoát về màn hình
+  //    đăng nhập, tránh người khác dùng máy đọc dữ liệu đang mở ──
+  useEffect(()=>{
+    if(!currentUser)return;
+    let timer=null;
+    const lock=()=>{clearSession();setCurrentUser(null);};
+    const reset=()=>{if(timer)clearTimeout(timer);timer=setTimeout(lock,IDLE_LOCK_MIN*60*1000);};
+    const evs=["mousedown","keydown","touchstart","wheel","visibilitychange"];
+    evs.forEach(e=>window.addEventListener(e,reset,{passive:true}));
+    reset();
+    return()=>{if(timer)clearTimeout(timer);evs.forEach(e=>window.removeEventListener(e,reset));};
+  },[currentUser]);
   const [showSettings,setShowSettings]=useState(false);
   const [page,setPage]=useState("dashboard");
   const [doiTuong,setDoiTuong]=useState([]);
