@@ -766,6 +766,16 @@ window.storage={
       await _fbAuthReady; // đảm bảo đã đăng nhập Firebase Auth (nếu có cấu hình) trước khi gọi Firestore
       try{
         const snap=await _fsRetry(()=>_fbDb.collection(COL).doc(encodeKey(k)).get());
+        // QUAN TRỌNG: nếu key này đang có 1 bản ghi CHƯA đồng bộ xong trong hàng đợi
+        // ngoại tuyến (VD: lần lưu trước bị mất mạng thoáng qua, đã đưa vào outbox
+        // nhưng _flushOutbox() chưa kịp chạy), thì bản trong outbox mới là thay đổi
+        // MỚI NHẤT của người dùng — còn dữ liệu vừa đọc được từ Firestore ở trên có
+        // thể đang CŨ. Nếu không ưu tiên outbox ở đây, người dùng tải lại trang (hoặc
+        // mở ở máy khác) sẽ thấy dữ liệu vừa lưu "biến mất", dù nó vẫn còn nguyên
+        // trong hàng đợi và rồi sẽ bị đẩy đè lên sau — đây chính là nguyên nhân khiến
+        // việc lưu lên Firebase có vẻ như "không ăn".
+        const ob=_loadOutbox();
+        if(k in ob)return{value:ob[k].v};
         if(snap.exists){const d=snap.data();return{value:d.v};}
         return null; // key không tồn tại trên Firebase → null (KHÔNG đọc localStorage)
       }catch(e){
@@ -4493,9 +4503,23 @@ function saveWorkbookA4(wb,fileName){
       const land=nc>8;
       if(xml.indexOf("<pageSetup")===-1){
         const tag='<pageSetup paperSize="9" orientation="'+(land?"landscape":"portrait")+'" fitToWidth="1" fitToHeight="0" horizontalDpi="600" verticalDpi="600"/>';
-        xml=xml.indexOf("<pageMargins")>=0
-          ? xml.replace(/(<pageMargins[^>]*\/>)/,"$1"+tag)
-          : xml.replace("</worksheet>",tag+"</worksheet>");
+        if(xml.indexOf("<pageMargins")>=0){
+          xml=xml.replace(/(<pageMargins[^>]*\/>)/,"$1"+tag);
+        }else{
+          // QUAN TRỌNG: không được chèn <pageSetup> ngay trước </worksheet> một cách mù quáng.
+          // Theo đúng thứ tự phần tử bắt buộc của schema OOXML (CT_Worksheet), <pageSetup>
+          // PHẢI đứng TRƯỚC các phần tử <headerFooter>/<rowBreaks>/<colBreaks>/<customProperties>/
+          // <cellWatches>/<ignoredErrors>/<drawing>/<tableParts>/<extLst>... nếu các phần tử này
+          // tồn tại trong sheet. xlsx-js-style tự sinh <ignoredErrors> bất cứ khi nào có cột dạng
+          // số bị lưu dưới dạng text (VD: số CCCD/CMND, số điện thoại — rất phổ biến trong ứng dụng
+          // này) — nếu chèn <pageSetup> SAU <ignoredErrors> là VI PHẠM thứ tự XML bắt buộc, khiến
+          // Excel coi file bị hỏng và bật hộp thoại "We found a problem with some content...".
+          // → Tìm phần tử hợp lệ ĐẦU TIÊN đứng sau <pageSetup> theo schema (nếu có) và chèn ngay
+          // trước phần tử đó, thay vì chèn ngay trước </worksheet>.
+          const afterPageSetupTags=/<(headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|drawingHF|legacyDrawing|legacyDrawingHF|picture|oleObjects|controls|webPublishItems|tableParts|extLst)[ >]/;
+          const m=xml.match(afterPageSetupTags);
+          xml=m ? xml.slice(0,m.index)+tag+xml.slice(m.index) : xml.replace("</worksheet>",tag+"</worksheet>");
+        }
       }
       if(xml.indexOf("<sheetPr")===-1)
         xml=xml.replace(/(<worksheet[^>]*>)/,'$1<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
