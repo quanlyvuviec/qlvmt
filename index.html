@@ -7465,7 +7465,20 @@ async function _aesKey(pwd,saltHex,iter){
   return crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:iter||PWD_ITER,hash:"SHA-256"},
     base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
 }
-const _b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+// _b64: chuyển ArrayBuffer → base64. Không dùng String.fromCharCode(...bytes) trực tiếp vì
+// spread/apply một mảng lớn (file backup TOÀN BỘ dữ liệu — danh mục khu phố, danh sách cán bộ,
+// đối tượng, v.v. — ciphertext có thể tới hàng trăm KB/vài MB) sẽ vượt quá giới hạn số tham số
+// tối đa của hàm trong JS engine → "Maximum call stack size exceeded". Xử lý theo từng khối nhỏ
+// (32KB/lần) để an toàn với file có kích thước bất kỳ.
+const _b64=buf=>{
+  const bytes=new Uint8Array(buf);
+  let binary="";
+  const CHUNK=0x8000; // 32768 bytes/lần – dưới ngưỡng an toàn của mọi engine JS phổ biến
+  for(let i=0;i<bytes.length;i+=CHUNK){
+    binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+CHUNK));
+  }
+  return btoa(binary);
+};
 const _unb64=str=>Uint8Array.from(atob(str),c=>c.charCodeAt(0));
 async function encryptBackup(plainText,pwd){
   const salt=_rndHex(16);
@@ -12991,6 +13004,11 @@ function App(){
   };
   const doRestore=async d=>{
     const vu=d.vu_an||[],bn=d.bang_nhom||[],dtc=d.diem_tc||[],hd=d.hd26_dt||[];
+    // Danh mục Khu phố, Rà soát ĐB không MT, Danh sách cán bộ, và 2 module theo dõi
+    // nghiệp vụ (Bắt trên địa bàn / Vụ việc mới) — TRƯỚC ĐÂY bị bỏ sót khi khôi phục:
+    // dữ liệu này VẪN NẰM TRONG file backup (vì đã có trong allData khi xuất) nhưng
+    // doRestore không đọc lại nên bị "mất" ngầm mỗi khi khôi phục từ file backup.
+    const kp=d.khu_pho||[],rs=d.ra_soat||[],cb=d.can_bo||[],bdb=d.bat_dia_ban||[],vvm=d.vu_viec_moi||[];
     const r={b4:d.b4||{},b5:d.b5||{},b6:d.b6||{},b7:d.b7||{},b2x:d.b2x||{},tb136:d.tb136||{},pl2_tb136:d.pl2_tb136||{},pl3_tb136:d.pl3_tb136||{},hd26:d.hd26||{},b8:d.b8||{}};
     // Load unified or migrate old
     let unified=d.doi_tuong||[];
@@ -13003,9 +13021,13 @@ function App(){
     await Promise.all([
       saveStore(KEYS.doi_tuong,unified),saveStore(KEYS.vu_an,vu),
       saveStore(KEYS.bang_nhom,bn),saveStore(KEYS.diem_tc,dtc),saveStore(KEYS.hd26,hd),
+      saveStore(KEYS.khu_pho,kp),saveStore(KEYS.ra_soat,rs),saveStore(KEYS.can_bo,cb),
+      saveStore(KEYS.bat_dia_ban,bdb),saveStore(KEYS.vu_viec_moi,vvm),
       saveReportAll(r),
     ]);
     setDoiTuong(unified);setVuAn(vu);setBangNhom(bn);setDiemTC(dtc);setHd26Dt(hd);setRpt(r);
+    setKhuPho(kp);setRaSoat(rs);setCanBo(cb);setBatDiaBan(bdb);setVuViecMoi(vvm);
+    syncKhuPhoOptions(kp);syncCanBoOptions(cb);
   };
   const allData={
     doi_tuong:doiTuong,
@@ -13016,6 +13038,9 @@ function App(){
     nghi_van:doiTuong.filter(r=>(r.nhom||[]).includes("nghi_van")),
     suu_tra:doiTuong.filter(r=>(r.nhom||[]).includes("suu_tra")),
     vu_an,bang_nhom,diem_tc,hd26_dt,khu_pho:khuPho,ra_soat:raSoat,
+    // Danh sách cán bộ (can_bo) TRƯỚC ĐÂY bị thiếu ở đây → không được đưa vào file sao lưu
+    // dù đã đồng bộ cloud bình thường. Bổ sung để backup luôn đầy đủ mọi danh mục dùng chung.
+    can_bo:canBo,
     bat_dia_ban:batDiaBan,vu_viec_moi:vuViecMoi,...rpt
   };
   const navItems=[
