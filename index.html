@@ -12237,7 +12237,12 @@ function CauHinhPage({toast,onConfigChange}){
     const next={...cfg,donVi,capTren,quanHuyen};
     saveSysCfg(next);
     CONFIG.donVi=donVi;CONFIG.capTren=capTren;CONFIG.quanHuyen=quanHuyen;
-    toast("✅ Đã lưu thông tin đơn vị!","success");
+    // Tên đơn vị quyết định phường/xã dùng để bóc tách "Đối tượng bị bắt trên địa bàn"
+    const db=parseDonViDiaBan(donVi);
+    toast(db
+      ? `✅ Đã lưu thông tin đơn vị! Địa bàn lọc đối tượng: ${db.label}. Vào mục "🆕 Vụ việc ma túy mới" bấm "🔄 Đồng bộ lại 2 mục" để cập nhật lại danh sách theo phường/xã mới.`
+      : `✅ Đã lưu thông tin đơn vị! ⚠️ Chưa nhận diện được phường/xã từ tên đơn vị — nên nhập dạng "Công an phường Tân Bình" để lọc đúng Đối tượng bị bắt trên địa bàn.`,
+      "success");
   };
 
   const saveFb=async()=>{
@@ -12764,6 +12769,156 @@ function NghiepVuSubjectBlock({rec,idx,onChange,onRemove,canRemove,collapsed,onT
 
 const emptyNvSubject=()=>{const o={_id:uid()};F_NV_DOITUONG.forEach(f=>{o[f.k]=f.def||"";o[f.k+"_other"]="";});return o;};
 
+// ══════════════════════════════════════════════════════════════════════
+// TỰ ĐỘNG CHUYỂN DỮ LIỆU TỪ "VỤ VIỆC MA TÚY MỚI" SANG 2 MỤC:
+//   (1) "Vụ án/Vụ việc về ma túy (PL VỤ – PC04)"
+//   (2) "Đối tượng bị bắt trên địa bàn"
+// Ở mục (2) CHỈ lấy những đối tượng có Nơi thường trú / Nơi tạm trú /
+// Nơi ở hiện tại thuộc PHƯỜNG (XÃ) của đơn vị đang khai báo tại
+// Cấu hình hệ thống → Tên đơn vị. Đổi "Tên đơn vị" sang phường khác thì
+// việc bóc tách đối tượng cũng tự chuyển theo phường đó.
+// ══════════════════════════════════════════════════════════════════════
+const _nvNorm=s=>stripDiacriticsVN(String(s||"")).toLowerCase().replace(/[.,;:()\[\]\-\/\\|]/g," ").replace(/\s+/g," ").trim();
+const _nvReEsc=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+// Tách địa chỉ thành từng "đoạn" (ngăn bởi dấu phẩy/xuống dòng) rồi mới chuẩn hoá,
+// vì tên phường/xã trong địa chỉ hành chính Việt Nam luôn nằm trọn trong 1 đoạn.
+const _nvSegs=s=>String(s||"").split(/[,\n\r]+/).map(x=>_nvNorm(x)).filter(Boolean);
+// Các từ khoá cấp trên được phép đứng ngay sau tên phường/xã khi địa chỉ không có dấu phẩy
+const _NV_ADMIN_TAIL="(?:tp|thanh pho|tphcm|hcm|ho chi minh|ha noi|da nang|hai phong|can tho|quan|huyen|thi xa|tinh|viet nam|vn)";
+
+// Bóc tách "phường/xã/thị trấn/đặc khu + TÊN" từ Tên đơn vị.
+// VD: "Công an phường Tân Bình" → {type:"phường", name:"Tân Bình", label:"phường Tân Bình"}
+function parseDonViDiaBan(donVi){
+  const s=String(donVi||"").trim();
+  if(!s)return null;
+  const m=s.match(/(đặc\s*khu|thị\s*trấn|phường|xã)\s+(.+)$/i);
+  if(!m)return null;
+  const type=m[1].replace(/\s+/g," ").trim();
+  const name=m[2].replace(/[,.;].*$/,"").trim();
+  if(!name)return null;
+  return {type,name,label:type+" "+name};
+}
+function _nvDiaBanPrefixes(type){
+  const t=_nvNorm(type);
+  if(t.indexOf("phuong")===0)return["phuong","p"];
+  if(t.indexOf("xa")===0)return["xa","x"];
+  if(t.indexOf("thi tran")===0)return["thi tran","tt"];
+  if(t.indexOf("dac khu")===0)return["dac khu","dk"];
+  return[t];
+}
+// Địa chỉ có thuộc phường/xã đang cấu hình hay không?
+// LƯU Ý: BẮT BUỘC phải có tiền tố "Phường/P./Xã/X./Thị trấn/TT." đứng trước tên,
+// để KHÔNG nhận nhầm "Quận Tân Bình" (tên quận trùng tên phường) thành
+// "Phường Tân Bình" → tránh lấy sai đối tượng của địa bàn khác.
+function addrInDiaBan(addr,db){
+  if(!db)return false;
+  const n=_nvNorm(db.name);if(!n)return false;
+  const pre=_nvDiaBanPrefixes(db.type).map(_nvReEsc).join("|");
+  // Tên phường/xã phải KẾT THÚC đoạn địa chỉ (hoặc chỉ còn lại tên cấp trên phía sau),
+  // để "Phường Tân Bình Thạnh" KHÔNG bị nhận nhầm là "Phường Tân Bình".
+  const re=new RegExp("(^|\\s)(?:"+pre+")\\s+"+_nvReEsc(n)+"(?=$|\\s+"+_NV_ADMIN_TAIL+"(\\s|$))");
+  return _nvSegs(addr).some(seg=>re.test(seg));
+}
+// 3 trường địa chỉ dùng để xét "đối tượng bị bắt TRÊN ĐỊA BÀN"
+const NV_ADDR_FIELDS=["thuong_tru","tam_tru","noi_o_ht"];
+function subjectInDiaBan(s,db){
+  return NV_ADDR_FIELDS.some(k=>addrInDiaBan(dv(s||{},k),db));
+}
+function filterSubjectsInDiaBan(list,db){
+  return (list||[]).filter(s=>subjectInDiaBan(s,db));
+}
+// Số đối tượng thuộc địa bàn trong 1 danh sách vụ việc (dùng cho badge thống kê)
+function countSubjectsInDiaBan(vuViecList,db){
+  let n=0;(vuViecList||[]).forEach(v=>{n+=filterSubjectsInDiaBan(v.doi_tuong,db).length;});return n;
+}
+
+// Suy ra "Đơn vị phát hiện, bắt giữ" (cột PL VỤ) từ "Đơn vị bắt/mời" của vụ việc
+function _nvMapDonViPH(donViBatMoi){
+  const v=_nvNorm(donViBatMoi);
+  const me=_nvNorm(CONFIG.donVi);
+  if(!v)return"";
+  if(/(^|\s)c04(\s|$)/.test(v)||/cuc c04/.test(v))return"Cục C04";
+  if(/(^|\s)pc04(\s|$)/.test(v))return"PC04";
+  if(me&&v===me)return"Công an phường tự phát hiện";
+  if(/cong an (phuong|xa|thi tran|dac khu)/.test(v))return"Công an phường khác phát hiện";
+  if(/bien phong/.test(v))return"Bộ đội biên phòng";
+  if(/hai quan/.test(v))return"Hải quan";
+  if(/canh sat bien/.test(v))return"Cảnh sát biển";
+  return"Lực lượng khác";
+}
+// "Điều 249. Tội tàng trữ trái phép chất ma túy" → "Điều 249 BLHS"
+function _nvToiDanhFromLoai(loai){
+  const m=String(loai||"").match(/Điều\s*([0-9]+[a-zA-Z]?)/i);
+  return m?("Điều "+m[1]+" BLHS"):"";
+}
+
+// Các trường của PL VỤ được TỰ ĐỘNG điền từ 1 bản ghi Vụ việc ma túy mới
+function buildVuAnAuto(vv,db){
+  const subs=(vv.doi_tuong||[]);
+  return{
+    tinh_trang_vu:"Phát hiện mới",
+    ma_vu_an:vv.ma_vu_viec||"",
+    don_vi_bc:CONFIG.donVi,
+    ngay_bc:vv.ngay_phat_hien||"",
+    don_vi_ph_bt:_nvMapDonViPH(vv.don_vi_bat_moi),
+    trich_yeu_nd:vv.noi_dung_vu_viec||dv(vv,"loai_vu_viec")||"",
+    ngay_ph_bt:vv.ngay_phat_hien||"",
+    dia_ban_ph:db?db.label:"",
+    so_doi_tuong:String(subs.length),
+    toi_danh_chinh:_nvToiDanhFromLoai(dv(vv,"loai_vu_viec")),
+    phong_thu_ly:"PC04",
+    ca_cap_xa:CONFIG.donVi,
+    dtv_thu_ly:vv.dtv_thu_ly_chinh||"",
+  };
+}
+// Ghi đè các trường tự động NHƯNG GIỮ NGUYÊN phần cán bộ đã tự sửa tay trong PL VỤ:
+// chỉ ghi đè khi giá trị hiện tại đang trống hoặc vẫn đúng bằng giá trị tự động lần trước.
+function _nvMergeAuto(existing,auto){
+  const prev=(existing&&existing._auto)||{};
+  const out={...(existing||{})};
+  Object.keys(auto).forEach(k=>{
+    const cur=out[k];
+    if(cur===undefined||cur===""||cur===null||cur===prev[k])out[k]=auto[k];
+  });
+  out._auto={...auto};
+  return out;
+}
+
+// Đồng bộ TOÀN BỘ danh sách "Vụ việc ma túy mới" sang 2 mục đích đến.
+// Trả về {vuAn, batDiaBan} mới. Bản ghi do người dùng tự nhập tay ở 2 mục kia
+// (không có _src_vv) luôn được giữ nguyên, không bị đụng đến.
+function syncVuViecMoiTo(vuViecList,vuAnList,batList){
+  const db=parseDonViDiaBan(CONFIG.donVi);
+  const list=vuViecList||[];
+  const srcIds=new Set(list.map(v=>v._id));
+
+  // ── (1) Vụ án/Vụ việc về ma túy (PL VỤ – PC04) ──
+  let nextVuAn=(vuAnList||[]).filter(r=>!r._src_vv||srcIds.has(r._src_vv));
+  list.forEach(vv=>{
+    const auto=buildVuAnAuto(vv,db);
+    const i=nextVuAn.findIndex(r=>r._src_vv===vv._id);
+    if(i>=0)nextVuAn[i]=_nvMergeAuto(nextVuAn[i],auto);
+    else{
+      const base={};F_VU.forEach(f=>{base[f.k]=f.def||"";base[f.k+"_other"]="";});
+      nextVuAn=[{...base,..._nvMergeAuto({},auto),_id:uid(),_created:vv._created||new Date().toISOString(),_src_vv:vv._id},...nextVuAn];
+    }
+  });
+
+  // ── (2) Đối tượng bị bắt trên địa bàn (chỉ đối tượng thuộc phường/xã đơn vị) ──
+  let nextBat=(batList||[]).filter(r=>!r._src_vv||srcIds.has(r._src_vv));
+  list.forEach(vv=>{
+    const subs=filterSubjectsInDiaBan(vv.doi_tuong,db);
+    const i=nextBat.findIndex(r=>r._src_vv===vv._id);
+    if(!subs.length){if(i>=0)nextBat.splice(i,1);return;}
+    const src={...vv,doi_tuong:subs.map(s=>({...s}))};
+    delete src._id;delete src._created;delete src._src_vv;
+    if(i>=0)nextBat[i]={...nextBat[i],...src,_id:nextBat[i]._id,_created:nextBat[i]._created,_src_vv:vv._id};
+    else nextBat=[{...src,_id:uid(),_created:vv._created||new Date().toISOString(),_src_vv:vv._id},...nextBat];
+  });
+  return{vuAn:nextVuAn,batDiaBan:nextBat};
+}
+
+
 // ── Modal Thêm/Sửa Vụ việc (kèm nhiều Đối tượng bên trong) ──
 // ── Xuất báo cáo thống kê Nghiệp vụ ra Excel (đầy đủ mọi trường, đúng thể thức văn bản) ──
 function fieldValNV(rec,f){
@@ -13055,7 +13210,7 @@ function NghiepVuViewModal({rec,onClose,onEdit}){
 }
 
 // ── Trang danh sách "Theo dõi nghiệp vụ": Đối tượng bị bắt trên địa bàn / Vụ việc ma túy mới ──
-function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
+function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTargets,isDerived}){
   const [form,setForm]=useState(null); // {mode,rec}
   const [viewRec,setViewRec]=useState(null);
   const [pwdAction,setPwdAction]=useState(null); // {type:"edit"|"delete", rec}
@@ -13090,24 +13245,61 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
   const pages=Math.max(1,Math.ceil(filtered.length/PER));
   const paged=filtered.slice((pg-1)*PER,pg*PER);
 
+  // ── Địa bàn (phường/xã) lấy từ Cấu hình hệ thống → Tên đơn vị ──
+  const diaBan=parseDonViDiaBan(CONFIG.donVi);
+  const [syncing,setSyncing]=useState(false);
+  // Đồng bộ danh sách vụ việc hiện hành sang:
+  //   (1) Vụ án/Vụ việc về ma túy (PL VỤ – PC04)
+  //   (2) Đối tượng bị bắt trên địa bàn (lọc theo phường/xã của đơn vị)
+  const runSync=async(list,opt)=>{
+    if(!syncTargets)return null;
+    const o=opt||{};
+    setSyncing(true);
+    try{
+      const res=syncVuViecMoiTo(list,syncTargets.vuAn,syncTargets.batDiaBan);
+      await saveStore(KEYS.vu_an,res.vuAn);syncTargets.setVuAn(res.vuAn);
+      await saveStore(KEYS.bat_dia_ban,res.batDiaBan);syncTargets.setBatDiaBan(res.batDiaBan);
+      if(!o.silent){
+        const nDt=countSubjectsInDiaBan(list,diaBan);
+        toast(`🔄 Đã đồng bộ ${list.length} vụ việc sang PL VỤ (PC04) và ${nDt} đối tượng thuộc ${diaBan?diaBan.label:"địa bàn đơn vị"} sang mục Đối tượng bị bắt trên địa bàn`,"success");
+      }
+      return res;
+    }catch(e){
+      toast("❌ Lỗi đồng bộ sang PL VỤ / Đối tượng bị bắt trên địa bàn: "+e.message,"error");
+      return null;
+    }finally{setSyncing(false);}
+  };
+
   const save=async rec=>{
     let next;
-    if(form.mode==="add")next=[{...rec,_id:uid(),_created:new Date().toISOString()},...data];
+    const isAdd=form.mode==="add";
+    if(isAdd)next=[{...rec,_id:uid(),_created:new Date().toISOString()},...data];
     else next=data.map(r=>r._id===form.rec._id?{...r,...rec}:r);
     try{
       await saveStore(storeKey,next);setData(next);setForm(null);
       // Xoá bộ lọc tìm kiếm khi vừa thêm mới, để bản ghi mới không bị "biến mất"
       // nếu ô tìm kiếm đang có sẵn từ khoá (gõ dở hoặc trình duyệt tự điền) không
       // khớp với bản ghi vừa nhập — trước đây phải bấm F5 mới thấy lại được.
-      if(form.mode==="add"&&search)setSearch("");
-      toast(form.mode==="add"?"✅ Đã thêm vụ việc!":"✅ Đã cập nhật vụ việc!","success");
+      if(isAdd&&search)setSearch("");
+      if(syncTargets){
+        await runSync(next,{silent:true});
+        const nDt=filterSubjectsInDiaBan(rec.doi_tuong,diaBan).length;
+        const tong=(rec.doi_tuong||[]).length;
+        toast((isAdd?"✅ Đã thêm vụ việc":"✅ Đã cập nhật vụ việc")
+          +` → đã tự chuyển sang Vụ án/Vụ việc (PL VỤ – PC04)`
+          +(nDt?` và ${nDt}/${tong} đối tượng thuộc ${diaBan?diaBan.label:"địa bàn"} sang Đối tượng bị bắt trên địa bàn`
+               :` (không có đối tượng nào thuộc ${diaBan?diaBan.label:"địa bàn đơn vị"})`),"success");
+      }else{
+        toast(isAdd?"✅ Đã thêm vụ việc!":"✅ Đã cập nhật vụ việc!","success");
+      }
     }catch(e){toast("❌ Lỗi lưu: "+e.message,"error");}
   };
   const del=async rec=>{
     const next=data.filter(r=>r._id!==rec._id);
     try{
       await saveStore(storeKey,next);setData(next);
-      toast("Đã xóa vụ việc","info");
+      if(syncTargets)await runSync(next,{silent:true});
+      toast(syncTargets?"Đã xóa vụ việc (kèm bản ghi đã tự chuyển sang 2 mục liên quan)":"Đã xóa vụ việc","info");
     }catch(e){toast("❌ Lỗi xóa: "+e.message,"error");}
   };
 
@@ -13133,9 +13325,18 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
             <span className="badge" style={{background:"#f0fdf4",color:"#15803d",border:"1px solid #bbf7d0"}}>
               👤 {filtered.reduce((sum,r)=>sum+(r.doi_tuong||[]).length,0)} đối tượng
             </span>
+            {syncTargets&&
+              <span className="badge" style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa"}}>
+                🏠 {countSubjectsInDiaBan(filtered,diaBan)} đối tượng thuộc {diaBan?diaBan.label:"địa bàn đơn vị"}
+              </span>}
+            {isDerived&&
+              <span className="badge" style={{background:"#eef2ff",color:"#4338ca",border:"1px solid #c7d2fe"}}>
+                🔗 {data.filter(r=>r._src_vv).length} vụ lấy tự động từ Vụ việc ma túy mới
+              </span>}
           </div>
         </div>
         <div className="btn-grp">
+          {syncTargets&&<button className="btn btn-ghost btn-sm" disabled={syncing} title="Chuyển lại toàn bộ vụ việc sang PL VỤ (PC04) và Đối tượng bị bắt trên địa bàn theo Tên đơn vị đang cấu hình" onClick={()=>runSync(data)}>{syncing?"⏳ Đang đồng bộ...":"🔄 Đồng bộ lại 2 mục"}</button>}
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
             <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_6_nofill" placeholder="Tìm theo mã vụ việc / tên đối tượng / CCCD..." value={search} onChange={e=>setSearch(e.target.value)}/>
@@ -13144,6 +13345,18 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
           <button className="btn btn-primary btn-sm" onClick={()=>setForm({mode:"add",rec:null})}>＋ Thêm vụ việc</button>
         </div>
       </div>
+      {syncTargets&&
+        <div style={{background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12.3,color:"#0c4a6e",lineHeight:1.65}}>
+          ℹ️ <b>Tự động chuyển dữ liệu:</b> mỗi vụ việc lưu tại đây sẽ tự chuyển sang mục <b>📁 Vụ án/Vụ việc về ma túy (PL VỤ – PC04)</b>.
+          Riêng mục <b>🚔 Đối tượng bị bắt trên địa bàn</b> chỉ lấy những đối tượng có <b>Nơi thường trú / Nơi tạm trú / Nơi ở hiện tại</b> thuộc <b>{diaBan?diaBan.label:"phường (xã) của đơn vị"}</b>
+          {" "}(lấy theo <b>Tên đơn vị</b> tại Cấu hình hệ thống — đổi sang phường/xã khác thì việc bóc tách cũng đổi theo). Đối tượng ở phường/xã khác sẽ không được lấy.
+          {!diaBan&&<div style={{color:"#b45309",fontWeight:700,marginTop:5}}>⚠️ Chưa nhận diện được phường/xã từ Tên đơn vị hiện tại ("{CONFIG.donVi}"). Vui lòng vào Cấu hình hệ thống nhập dạng "Công an phường Tân Bình" / "Công an xã ..." để lọc đúng đối tượng.</div>}
+        </div>}
+      {isDerived&&
+        <div style={{background:"#fefce8",border:"1.5px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12.3,color:"#854d0e",lineHeight:1.65}}>
+          ℹ️ Các vụ việc có dấu <b>🔗</b> được <b>lấy tự động</b> từ mục <b>🆕 Vụ việc ma túy mới</b> (chỉ gồm đối tượng thuộc {diaBan?diaBan.label:"địa bàn đơn vị"}).
+          Muốn sửa nội dung vụ việc hoặc danh sách đối tượng, hãy sửa tại mục <b>Vụ việc ma túy mới</b> — sửa ở đây sẽ bị ghi đè khi đồng bộ lại. Bản ghi tự nhập tay tại trang này vẫn được giữ nguyên.
+        </div>}
       <div className="card">
         <div className="tbl-wrap" style={{maxHeight:640,overflowY:"auto"}}>
           <table>
@@ -13178,7 +13391,10 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast}){
               {paged.map((r,ri)=>(
                 <tr key={r._id}>
                   <td>{(pg-1)*PER+ri+1}</td>
-                  <td style={{fontWeight:700,color:"var(--navy)"}}>{r.ma_vu_viec||"—"}</td>
+                  <td style={{fontWeight:700,color:"var(--navy)"}}>
+                    {r.ma_vu_viec||"—"}
+                    {r._src_vv&&<span title="Lấy tự động từ mục Vụ việc ma túy mới" style={{marginLeft:5,fontSize:11,color:"#4338ca"}}>🔗</span>}
+                  </td>
                   <td><DateChip val={r.ngay_phat_hien}/></td>
                   <td><TextCell v={dv(r,"loai_vu_viec")} max={40}/></td>
                   <td><TextCell v={r.noi_dung_vu_viec} max={60}/></td>
@@ -13548,8 +13764,9 @@ function App(){
           {page==="bang_nhom"&&<GroupPage groupKey="bang_nhom" title="Băng nhóm nghi vấn hoạt động phạm tội" icon="👥" fields={F_BANG_NHOM} data={bang_nhom} setData={setBangNhom} storeKey={KEYS.bang_nhom} dateRange={dateRange} toast={toast} showLoai={false}/>}
           {page==="diem_tc"&&<GroupPage groupKey="diem_tc" title="Điểm tổ chức, chứa chấp SDTPCMT" icon="📍" fields={F_DIEM_TC} data={diem_tc} setData={setDiemTC} storeKey={KEYS.diem_tc} dateRange={dateRange} toast={toast} showLoai={false}/>}
           {page==="hd26_dt"&&<GroupPage groupKey="hd26_dt" title="Diện quản lý theo Hướng dẫn 26/HD-BCA-C04" icon="🔍" fields={F_HD26} data={hd26_dt} setData={setHd26Dt} storeKey={KEYS.hd26} dateRange={dateRange} toast={toast} showLoai={false}/>}
-          {page==="bat_dia_ban"&&<NghiepVuPage title="Đối tượng bị bắt trên địa bàn" icon="🚔" storeKey={KEYS.bat_dia_ban} data={batDiaBan} setData={setBatDiaBan} dateRange={dateRange} toast={toast}/>}
-          {page==="vu_viec_moi"&&<NghiepVuPage title="Vụ việc ma túy mới" icon="🆕" storeKey={KEYS.vu_viec_moi} data={vuViecMoi} setData={setVuViecMoi} dateRange={dateRange} toast={toast}/>}
+          {page==="bat_dia_ban"&&<NghiepVuPage title="Đối tượng bị bắt trên địa bàn" icon="🚔" storeKey={KEYS.bat_dia_ban} data={batDiaBan} setData={setBatDiaBan} dateRange={dateRange} toast={toast} isDerived={true}/>}
+          {page==="vu_viec_moi"&&<NghiepVuPage title="Vụ việc ma túy mới" icon="🆕" storeKey={KEYS.vu_viec_moi} data={vuViecMoi} setData={setVuViecMoi} dateRange={dateRange} toast={toast}
+            syncTargets={{vuAn:vu_an,setVuAn,batDiaBan,setBatDiaBan}}/>}
           {page==="khu_pho"&&<KhuPhoPage khuPho={khuPho} setKhuPho={setKhuPho} toast={toast}/>}
           {page==="can_bo"&&<DanhSachCanBoPage canBoData={canBo} setCanBoData={setCanBo} toast={toast}/>}
           {page==="ra_soat"&&<RaSoatPage khuPho={khuPho} raSoat={raSoat} setRaSoat={setRaSoat} data={allData} dateRange={dateRange} toast={toast}/>}
