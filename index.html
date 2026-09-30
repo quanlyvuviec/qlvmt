@@ -1720,7 +1720,6 @@ const F_NV_VUVIEC=[
   {k:"mua_ban_kgm_mota",lbl:"Phương thức mua bán qua không gian mạng",type:"textarea",rows:2,ph:"VD: Liên hệ qua Telegram nickname “Kute”, thanh toán tiền mặt…",grp:"Xử lý vụ việc"},
   {k:"ket_qua_xu_ly",lbl:"Kết quả xử lý",type:"textarea",rows:2,grp:"Xử lý vụ việc"},
   {k:"ghi_chu",lbl:"Ghi chú",type:"textarea",rows:2,grp:"Xử lý vụ việc"},
-  {k:"dtv_thu_ly_chinh",lbl:"ĐTV thụ lý chính",type:"text",ph:"VD: Nguyễn Văn A",grp:"Cán bộ thụ lý"},
   {k:"can_bo_lam_truc_tiep",lbl:"Cán bộ làm trực tiếp",type:"text",ph:"VD: Trần Thị B",grp:"Cán bộ thụ lý"},
 ];
 // ── Số ma túy thu giữ được (nhiều dòng trong 1 vụ việc, mỗi dòng gắn với 1 đối tượng) ──
@@ -2508,18 +2507,21 @@ function kpCuaDoiTuong(s,db){
 function kpPhuongKhac(addr,db){
   if(!addr||!db)return"";
   if(addrInDiaBan(addr,db))return"";
+  const VIET_HOA=s=>s.toLowerCase().split(/\s+/).filter(Boolean).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" ");
+  const LOAI={p:"Phường",x:"Xã",tt:"Thị trấn"};
   for(const seg of String(addr).split(/[,;\n\r]+/)){
-    let m=seg.match(/(?:^|\s)(phường|xã|thị\s*trấn|đặc\s*khu)\s+([^,;]+)/i),loai="";
-    if(m)loai=m[1];
+    // Dạng đầy đủ: "phường Tân Sơn", "xã ...", "thị trấn ...", "đặc khu ..."
+    let m=seg.match(/(?:^|\s)(phường|xã|thị\s*trấn|đặc\s*khu)\s+([^,;]+)/i),loai="",ten="";
+    if(m){loai=m[1].replace(/\s+/g," ").toLowerCase();loai=loai.charAt(0).toUpperCase()+loai.slice(1);ten=m[2];}
     else{
-      m=seg.match(/(?:^|\s)(p|x|tt)\.\s*([A-Za-zÀ-ỹĐđ][^,;]*|\d{1,2}(?!\d))/i);
-      if(m)loai={p:"phường",x:"xã",tt:"thị trấn"}[m[1].toLowerCase()];
+      // Dạng viết tắt: "P Tân Sơn", "P. Tân Sơn", "P.Tân Sơn", "X. ...", "TT ..."
+      m=seg.match(/(?:^|[\s(])(p|x|tt)(?:\s*\.\s*|\s+)([A-Za-zÀ-ỹĐđ0-9][^,;]*)/i);
+      if(m){loai=LOAI[m[1].toLowerCase()];ten=m[2];}
     }
     if(!m)continue;
-    const ten=m[2].replace(/\s+(tp|thành phố|quận|huyện|tỉnh)(?=[\s.]|$).*$/i,"").replace(/[\s.]+$/,"").trim();
+    ten=ten.replace(/\s+(q|quận|tp|thành phố|tphcm|huyện|tỉnh)(?=[\s.]|$).*$/i,"").replace(/[\s.)]+$/,"").trim();
     if(!ten)continue;
-    const l=loai.replace(/\s+/g," ").toLowerCase();
-    return l.charAt(0).toUpperCase()+l.slice(1)+" "+ten;
+    return loai+" "+VIET_HOA(ten);
   }
   return"";
 }
@@ -2561,9 +2563,10 @@ function computeVuViecHotspot(khuPho,vuViecList,batDiaBanList,db){
   const idTheoSo=_kpIndexTheoSo(khuPho);
   const chuaXacDinh=[],vuNgoai=[],ngoaiDanhMuc=new Map(),ngoaiPhuong=new Map();
   const ghiNgoai=(ten,vu,dt)=>{
-    const o=ngoaiPhuong.get(ten)||{ten,vu:0,dt:0};
+    const k=_kpNorm(ten);   // "P. Tân Sơn" / "Phường Tan Son" → cùng 1 nhóm
+    const o=ngoaiPhuong.get(k)||{ten,vu:0,dt:0};
     if(vu)o.vu++;if(dt)o.dt++;
-    ngoaiPhuong.set(ten,o);
+    ngoaiPhuong.set(k,o);
   };
   const nhanDanhMuc=(so,rec)=>{const a=ngoaiDanhMuc.get(so)||[];a.push(rec);ngoaiDanhMuc.set(so,a);};
   // ── Vụ việc ──
@@ -7367,11 +7370,11 @@ function GroupPage({groupKey,title,icon,fields,data,setData,storeKey,dateRange,t
       {label:"STT",w:38,render:(_,i)=>i+1},
       {label:"Trạng thái",key:"tinh_trang_vu",w:120,render:r=><span className={`badge ${r.tinh_trang_vu==="Phát hiện mới"?"badge-red":"badge-blue"}`}>{(r.tinh_trang_vu||"—").slice(0,16)}</span>},
       {label:"Số hồ sơ",key:"so_ho_so",w:100},
-      {label:"Ngày PH",w:108,render:r=><DateChip val={r.ngay_ph_bt}/>},
+      {label:"Ngày tháng năm phát hiện, bắt giữ",key:"ngay_ph_bt",w:130,render:r=><DateChip val={r.ngay_ph_bt}/>},
+      {label:"Trích yếu nội dung",key:"trich_yeu_nd",w:260,render:r=><TextCell v={r.trich_yeu_nd} max={70}/>},
+      {label:"Số đối tượng",key:"so_doi_tuong",w:80,render:r=>r.so_doi_tuong!==undefined&&String(r.so_doi_tuong).trim()!==""?<b style={{color:"var(--navy)"}}>{r.so_doi_tuong}</b>:<span style={{color:"#cbd5e1"}}>—</span>},
       {label:"Tội danh",key:"toi_danh_chinh",w:160,render:r=>r.toi_danh_chinh?<span className="badge badge-navy">{r.toi_danh_chinh.slice(0,22)}</span>:<span style={{color:"#cbd5e1"}}>—</span>},
       {label:"Địa bàn",key:"dia_ban_ph",w:120,render:r=><TextCell v={r.dia_ban_ph} max={18}/>},
-      {label:"Tính chất",key:"tinh_chat_md",w:120,render:r=>r.tinh_chat_md?<span className="badge badge-orange">{r.tinh_chat_md}</span>:<span style={{color:"#cbd5e1"}}>—</span>},
-      {label:"Khám phá",w:85,render:r=><BoolBadge v={r.kham_pha} yes="✓ KP"/>},
     ],
     bang_nhom:[
       {label:"STT",w:38,render:(_,i)=>i+1},
@@ -12132,7 +12135,7 @@ function SettingsPanel({currentUser,onLogout,onClose}){
 // Phần D,E,J,K,L,M,N,O,P,Q tự tính từ DS Người sử dụng/Người nghiện (đã gắn Khu phố).
 // Phần F,G,H,I,R,S,T,U,V,X,Z là số liệu KHÔNG có sẵn trong hệ thống (nhân khẩu, truy nã,
 // điểm tổ chức trong tháng, 5 tiêu chí phân loại mới...) – cán bộ nhập tay tại đây theo từng Khu phố.
-function RaSoatPage({khuPho,raSoat,setRaSoat,data,dateRange,toast}){
+function RaSoatPage({khuPho,raSoat,setRaSoat,data,dateRange,setDateRange,toast}){
   const allSD=(data.su_dung||[]).filter(r=>!r.da_loai);
   const allNG=(data.nghien||[]).filter(r=>!r.da_loai);
   const dr=dateRange||{from:"",to:""};
@@ -12192,6 +12195,16 @@ function RaSoatPage({khuPho,raSoat,setRaSoat,data,dateRange,toast}){
             <span style={{fontSize:12,color:"var(--muted)"}}>Cột nền trắng = tự tính từ dữ liệu · Cột nền vàng = nhập tay</span>
           </div>
         </div>
+        {setDateRange&&
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",background:"#f8fafd",padding:"7px 11px",borderRadius:9,border:"1px solid #e2e8f0"}}
+          title="Khoảng thời gian tính cột “Phát sinh mới trong kỳ” (dùng chung với bộ lọc ngày ở thanh menu bên trái)">
+          <span style={{fontSize:11.5,fontWeight:700,color:"#475569"}}>📅 Kỳ báo cáo · TỪ</span>
+          <div style={{width:128}}><DateInputVN value={dr.from} onChange={v=>setDateRange(p=>({...p,from:v}))} style={{padding:"5px 28px 5px 8px",fontSize:12}}/></div>
+          <span style={{fontSize:11.5,fontWeight:700,color:"#475569"}}>ĐẾN</span>
+          <div style={{width:128}}><DateInputVN value={dr.to} onChange={v=>setDateRange(p=>({...p,to:v}))} style={{padding:"5px 28px 5px 8px",fontSize:12}}/></div>
+          {(dr.from||dr.to)&&<button className="btn btn-ghost btn-sm" onClick={()=>setDateRange({from:"",to:""})}>✕ Xóa</button>}
+          {!dr.from&&!dr.to&&<span style={{fontSize:11,color:"#b45309",fontWeight:600}}>Chưa chọn kỳ → tính toàn bộ thời gian</span>}
+        </div>}
       </div>
 
       {khuPho.length===0?(
@@ -12268,7 +12281,7 @@ function RaSoatPage({khuPho,raSoat,setRaSoat,data,dateRange,toast}){
       <div style={{background:"#e3f2fd",border:"1px solid #90caf9",borderRadius:8,padding:"10px 14px",fontSize:12,lineHeight:1.7,marginTop:12}}>
         💡 Vào mục <b>"Đồng bộ template"</b>, tải lên file mẫu gốc <b>MẪU RÀ SOÁT XÂY DỰNG ĐỊA BÀN KHÔNG MA TÚY.xlsx</b> –
         hệ thống sẽ tự nhận diện và điền đầy đủ các khu phố + số liệu (tự tính lẫn nhập tay) ở trên vào đúng vị trí.<br/>
-        ⚠️ Bộ lọc ngày ở thanh bên trái (📅) quyết định khoảng thời gian tính "phát sinh mới" – hãy đặt đúng kỳ báo cáo trước khi xuất.
+        ⚠️ Khoảng thời gian <b>“Kỳ báo cáo”</b> ở đầu trang này (dùng chung với ô <b>📅 Lọc theo ngày</b> cuối thanh menu bên trái) quyết định cách tính “phát sinh mới” – hãy đặt đúng kỳ báo cáo trước khi xuất.
       </div>
     </div>
   );
@@ -13061,7 +13074,6 @@ const NV_AUTOFILL_LABELS=[
   [/nội\s*dung\s*vụ\s*việc/i,"case","noi_dung_vu_viec"],
   [/đơn\s*vị\s*bắt.{0,3}mời|đơn\s*vị\s*bắt|đơn\s*vị\s*mời/i,"case","don_vi_bat_moi"],
   [/kết\s*quả\s*xử\s*lý\s*vụ\s*việc|kết\s*quả\s*xử\s*lý(?!\s*đối\s*tượng)/i,"case","ket_qua_xu_ly"],
-  [/đtv\s*thụ\s*lý\s*chính|điều\s*tra\s*viên\s*thụ\s*lý/i,"case","dtv_thu_ly_chinh"],
   [/cán\s*bộ\s*làm\s*trực\s*tiếp/i,"case","can_bo_lam_truc_tiep"],
   [/họ\s*và?\s*tên/i,"subject","ho_ten"],
   [/giới\s*tính/i,"subject","gioi_tinh"],
@@ -13256,11 +13268,81 @@ const nvKLText=n=>{
   const s=(Math.round(n*10000)/10000).toString();
   return s.replace(".",",");
 };
+// Chuẩn hoá tên loại ma túy người dùng gõ tắt/không thống nhất về 1 tên chuẩn:
+//   Ke / Ket / KET → Ketamine · Met / MET / "ma túy đá" → Methamphetamine
+//   THC / cần sa → Tetrahydrocannabinol (Cần sa) · ETO → Etomidate
+const _NV_MT_TEN={
+  ketamine:"Ketamine",etomidate:"Etomidate",meth:"Methamphetamine (Ma túy đá)",
+  thc:"Tetrahydrocannabinol (Cần sa)",mdma:"MDMA (Thuốc lắc)",heroin:"Heroin",
+  cocaine:"Cocaine",amph:"Amphetamine",opium:"Thuốc phiện",
+};
+function nvChuanHoaMaTuy(raw){
+  const goc=String(raw||"").trim();
+  if(!goc)return{key:"khong_ro",ten:"(chưa rõ loại)"};
+  const n=" "+stripDiacriticsVN(goc).toLowerCase().replace(/[^a-z0-9]+/g," ").trim()+" ";
+  let key="";
+  if(/ketamin| ket | ke /.test(n))key="ketamine";
+  else if(/etomidat| eto /.test(n))key="etomidate";
+  else if(/methamphetamin| met | ma tuy da | ice /.test(n))key="meth";
+  else if(/tetrahydrocannabinol|cannabi| thc | can sa /.test(n))key="thc";
+  else if(/mdma|thuoc lac|ecstasy|extasy/.test(n))key="mdma";
+  else if(/heroin| hero /.test(n))key="heroin";
+  else if(/cocain/.test(n))key="cocaine";
+  else if(/amphetamin/.test(n))key="amph";
+  else if(/thuoc phien|opium/.test(n))key="opium";
+  if(key)return{key,ten:_NV_MT_TEN[key]};
+  return{key:"khac:"+n.trim(),ten:goc};
+}
+// Các dòng ma túy thu giữ (đã chuẩn hoá, đổi kg→gam) của 1 vụ việc.
+// Ưu tiên danh sách "Số ma túy thu giữ được"; vụ cũ chưa có thì lấy "Trọng lượng ma túy thu giữ" ở từng đối tượng.
+function nvMaTuyRowsCuaVu(rec){
+  const subs=(rec&&rec.doi_tuong)||[],out=[];
+  ((rec&&rec.ma_tuy_thu)||[]).forEach(m=>{
+    let sl=nvKLNum(m.khoi_luong);if(!(sl>0))return;
+    let dvt=m.don_vi_tinh||"gam";
+    if(dvt==="kg"){sl*=1000;dvt="gam";}
+    out.push({...nvChuanHoaMaTuy(dv(m,"loai_ma_tuy")),sl,dvt,dt:nvMaTuyTenDT(m,subs)});
+  });
+  if(!out.length){
+    subs.forEach(s=>{
+      const raw=String(s.trong_luong_thu_giu||"").trim();
+      let sl=nvKLNum(raw);if(!(sl>0))return;
+      const low=stripDiacriticsVN(raw).toLowerCase();
+      let dvt="gam";
+      if(/kg|kilo/.test(low)){sl*=1000;}
+      else if(/(^|[^a-z])ml([^a-z]|$)/.test(low))dvt="ml";
+      else if(/vien/.test(low))dvt="viên";
+      else if(/cay/.test(low))dvt="cây";
+      out.push({...nvChuanHoaMaTuy(dv(s,"loai_ma_tuy")),sl,dvt,dt:s.ho_ten||""});
+    });
+  }
+  return out;
+}
+const nvCoThuGiuMaTuy=rec=>nvMaTuyRowsCuaVu(rec).length>0;
+// Tổng hợp ma túy thu giữ của nhiều vụ theo (loại chuẩn hoá, đơn vị tính)
+function nvTongHopMaTuy(records){
+  const map=new Map();let soVu=0;
+  (records||[]).forEach(r=>{
+    const rows=nvMaTuyRowsCuaVu(r);
+    if(!rows.length)return;
+    soVu++;
+    rows.forEach(x=>{
+      const k=x.key+"|"+x.dvt;
+      let g=map.get(k);
+      if(!g){g={key:x.key,ten:x.ten,dvt:x.dvt,tong:0,vu:new Set(),dong:0};map.set(k,g);}
+      g.tong+=x.sl;g.dong++;g.vu.add(r._id||r.ma_vu_viec);
+    });
+  });
+  const list=[...map.values()].sort((a,b)=>a.ten.localeCompare(b.ten,"vi")||a.dvt.localeCompare(b.dvt,"vi"));
+  return{list,soVu};
+}
+const nvTongHopText=tk=>tk.list.map(g=>`${g.ten}: ${nvKLText(g.tong)} ${g.dvt}`).join("; ");
+
 // Gộp danh sách ma túy thu giữ theo LOẠI: [{loai, tong, don_vi, chiTiet:[…]}]
 function nvGomMaTuyTheoLoai(list){
   const out=[];
   (list||[]).forEach(m=>{
-    const loai=dv(m,"loai_ma_tuy")||"(chưa rõ loại)";
+    const loai=nvChuanHoaMaTuy(dv(m,"loai_ma_tuy")).ten;
     const dvt=m.don_vi_tinh||"gam";
     let g=out.find(x=>x.loai===loai&&x.don_vi===dvt);
     if(!g){g={loai,don_vi:dvt,tong:0,chiTiet:[]};out.push(g);}
@@ -13362,6 +13444,9 @@ function _nvToiDanhFromLoai(loai){
 function _nvColTangVat(loai,donVi){
   const n=stripDiacriticsVN(String(loai||"")).toLowerCase();
   if(String(donVi||"gam")==="ml")return"tv_mt_khac_long";
+  const _ck=nvChuanHoaMaTuy(loai).key;
+  const _MAP={ketamine:"tv_ketamine_g",meth:"tv_meth_g",thc:"tv_can_sa",mdma:"tv_mdma_g",heroin:"tv_heroin",cocaine:"tv_cocaine",amph:"tv_amphet_g",opium:"tv_thuoc_phien"};
+  if(_MAP[_ck])return _MAP[_ck];
   if(/heroin/.test(n))return"tv_heroin";
   if(/met|da\b|methamphetamine|ma tuy da/.test(n))return"tv_meth_g";
   if(/amphetamine/.test(n)&&!/meth/.test(n))return"tv_amphet_g";
@@ -13861,6 +13946,44 @@ function ivFindHeader(aoa){
   }
   return null;
 }
+// ── So sánh vụ việc mới (từ Excel) với vụ việc ĐÃ CÓ trong phần mềm ──
+// Chữ ký 1 vụ: ngày phát hiện + tập đối tượng (họ tên không dấu / CCCD) + nội dung.
+//   "dup"   = trùng hẳn (cùng ngày và cùng danh sách đối tượng, hoặc cùng ngày + cùng nội dung
+//             + có chung đối tượng) → mặc định BỎ QUA, không nhập lại.
+//   "maybe" = cùng ngày và có chung ít nhất 1 đối tượng nhưng danh sách khác → nghi cùng 1 vụ,
+//             mặc định không nhập, cán bộ tự quyết định.
+function ivRowSig(iso,subs,noiXayRa,noiDung,code){
+  const names=new Set(),ids=new Set();
+  (subs||[]).forEach(s=>{
+    const n=_ivNorm(s&&s.ho_ten);if(n)names.add(n);
+    const c=String((s&&s.cccd)||"").replace(/\D/g,"");if(c.length>=9)ids.add(c);
+  });
+  return{code:code||"",date:iso||"",names,ids,place:_ivNorm(noiXayRa),content:_ivNorm(noiDung).slice(0,120)};
+}
+function ivSoSanhVu(a,b,dates){
+  const dl=(dates&&dates.length?dates:[a.date]).filter(Boolean);
+  if(!b.date||!dl.includes(b.date))return"";
+  let shared=0;
+  a.names.forEach(n=>{if(b.names.has(n))shared++;});
+  if(!shared)a.ids.forEach(c=>{if(b.ids.has(c))shared++;});
+  const sameContent=!!a.content&&a.content===b.content;
+  if(a.names.size>0&&shared===a.names.size&&shared===b.names.size)return"dup";
+  if(sameContent&&(shared>0||(!a.names.size&&!b.names.size)))return"dup";
+  return shared>0?"maybe":"";
+}
+function ivBuildExistSigs(existing){
+  return (existing||[]).map(e=>ivRowSig(e.ngay_phat_hien,e.doi_tuong,e.noi_xay_ra,e.noi_dung_vu_viec,e.ma_vu_viec));
+}
+// Phân loại 1 dòng mới so với kho đã có → {kind:"new"|"dup"|"maybe", code}
+function ivClassifyRow(sig,dates,existSigs){
+  let best=null;
+  for(const e of existSigs){
+    const k=ivSoSanhVu(sig,e,dates);
+    if(k==="dup")return{kind:"dup",code:e.code};
+    if(k==="maybe"&&!best)best={kind:"maybe",code:e.code};
+  }
+  return best||{kind:"new",code:""};
+}
 // Đọc 1 sheet → danh sách vụ việc đã bóc tách sẵn (chưa ghi vào kho dữ liệu).
 // Các dòng Excel có CÙNG số thứ tự (STT) được gộp thành 1 vụ việc, vì bảng
 // tổng hợp thường tách danh sách đối tượng của 1 vụ ra nhiều dòng.
@@ -13868,7 +13991,8 @@ function ivBuildRowsFromSheet(aoa,hdr,existing){
   const{headerIdx,map}=hdr;
   const baseCodes=new Set((existing||[]).map(r=>String(r.ma_vu_viec||"").toUpperCase()).filter(Boolean));
   const usedCodes=new Set(baseCodes);
-  const existSig=new Set((existing||[]).map(r=>String(r.ngay_phat_hien||"")+"|"+_ivNorm((r.doi_tuong||[])[0]&&(r.doi_tuong||[])[0].ho_ten)).filter(x=>x!=="|"));
+  const existSigs=ivBuildExistSigs(existing);
+  const fileSigs=[]; // chữ ký các dòng "mới" đã gặp trong CHÍNH file này (chống trùng nội bộ file)
   const groups=[];
   for(let i=headerIdx+1;i<aoa.length;i++){
     const row=aoa[i]||[];
@@ -13933,13 +14057,25 @@ function ivBuildRowsFromSheet(aoa,hdr,existing){
     if(dvi.ok===false)canhBao.push(nhan+": chưa nhận diện được đơn vị từ \""+String(dvi.raw||"").slice(0,45)+"\" → tạm điền \""+dvi.don_vi_bat_moi+"\"");
     if(suspect==="swap")canhBao.push(nhan+": ngày tiếp nhận "+fmtDate(iso)+" có thể bị đảo ngày/tháng (nội dung ghi "+fmtDate(isoND)+")");
     if(suspect==="year")canhBao.push(nhan+": ngày tiếp nhận "+fmtDate(iso)+" lệch năm so với nội dung ("+fmtDate(isoND)+")");
-    const sig=iso+"|"+_ivNorm(subs[0]&&subs[0].ho_ten);
-    if(existSig.has(sig)){r._dup=true;r._sel=false;}
+    const sig=ivRowSig(iso,subs,r.noi_xay_ra,noiDung);
+    const dates=[iso,suspect?isoND:""].filter(Boolean);
+    let cls=ivClassifyRow(sig,dates,existSigs);
+    r._dupWhy=cls.code?("đã có: "+cls.code):"";
+    if(cls.kind==="new"){
+      const f=fileSigs.find(x=>ivSoSanhVu(sig,x.sig,dates)==="dup");
+      if(f){cls={kind:"dup",code:""};r._dupWhy="trùng dòng "+f.rows+" trong file";r._fileDup=true;}
+      else fileSigs.push({sig,rows:g.excelRows.join("+")});
+    }
+    r._dup=cls.kind==="dup";r._maybe=cls.kind==="maybe";
+    if(r._dup||r._maybe)r._sel=false;
     out.push(r);
   });
   // Cấp mã vụ việc MT+ddmmyy; trùng ngày thì thêm "-2", "-3"…
   out.forEach(r=>{r.ma_vu_viec=ivUniqueCode(ivMaVuViec(r.ngay_phat_hien),usedCodes);});
-  return{rows:out,canhBao,baseCodes};
+  const nDup=out.filter(r=>r._dup).length,nMaybe=out.filter(r=>r._maybe).length;
+  if(nDup)canhBao.unshift(nDup+" vụ việc trong file ĐÃ CÓ trong phần mềm (trùng ngày + đối tượng/nội dung) → tự bỏ qua, chỉ nhập các vụ mới.");
+  if(nMaybe)canhBao.unshift(nMaybe+" vụ việc nghi cùng 1 vụ đã có (cùng ngày, có chung đối tượng nhưng danh sách khác) → chưa chọn nhập; tích chọn nếu đó thực sự là vụ mới.");
+  return{rows:out,canhBao,baseCodes,existSigs};
 }
 // Chuyển 1 dòng xem trước thành bản ghi Vụ việc đầy đủ (đủ mọi trường của form)
 function ivToRecord(r){
@@ -14096,8 +14232,21 @@ function NvExcelImportModal({preview,onClose,onConfirm}){
     list.forEach(r=>{if(r._codeEdited&&r.ma_vu_viec)used.add(r.ma_vu_viec.toUpperCase());});
     return list.map(r=>r._codeEdited?r:{...r,ma_vu_viec:ivUniqueCode(ivMaVuViec(r.ngay_phat_hien),used)});
   };
-  const upd=(key,patch)=>setRows(p=>recode(p.map(r=>r._key===key?{...r,...patch}:r)));
-  const toggleAll=v=>setRows(p=>p.map(r=>({...r,_sel:v})));
+  // Sửa ngày → so sánh lại với vụ đã có (dòng trùng nội bộ file giữ nguyên trạng thái)
+  const phanLoaiLai=r=>{
+    if(r._fileDup)return r;
+    const sig=ivRowSig(r.ngay_phat_hien,r.doi_tuong,r.noi_xay_ra,r.noi_dung_vu_viec);
+    const c=ivClassifyRow(sig,[r.ngay_phat_hien,r._ngaySuggest].filter(Boolean),preview.existSigs||[]);
+    return{...r,_dup:c.kind==="dup",_maybe:c.kind==="maybe",_dupWhy:c.code?("đã có: "+c.code):"",_sel:c.kind==="new"};
+  };
+  const upd=(key,patch)=>setRows(p=>recode(p.map(r=>{
+    if(r._key!==key)return r;
+    const n={...r,...patch};
+    return ("ngay_phat_hien" in patch)?phanLoaiLai(n):n;
+  })));
+  // "Chọn tất cả" chỉ chọn vụ MỚI; vụ trùng / nghi trùng phải tích tay
+  const toggleAll=v=>setRows(p=>p.map(r=>({...r,_sel:v?(!r._dup&&!r._maybe):false})));
+  const selTrung=sel.filter(r=>r._dup||r._maybe).length;
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1100,overflowY:"auto",padding:"12px 8px"}}>
       <div style={{background:"#fff",borderRadius:14,width:"min(1200px,99vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"96vh",...dragStyle}}>
@@ -14113,7 +14262,8 @@ function NvExcelImportModal({preview,onClose,onConfirm}){
             {[["🆕 Vụ việc sẽ nhập",sel.length,"#2e7d32","#e8f5e9","#a5d6a7"],
               ["👤 Đối tượng",nDt,"#1565c0","#e3f2fd","#90caf9"],
               ["🏠 Thuộc "+(diaBan?diaBan.label:"địa bàn"),nDb,"#c2410c","#fff7ed","#fed7aa"],
-              ["⏭ Đã có, bỏ qua",rows.filter(r=>r._dup).length,"#f57f17","#fff8e1","#ffe082"]].map(([lbl,n,c,bg,bd])=>(
+              ["⏭ Đã có, bỏ qua",rows.filter(r=>r._dup).length,"#f57f17","#fff8e1","#ffe082"],
+              ["❓ Nghi trùng",rows.filter(r=>r._maybe).length,"#7c3aed","#f5f3ff","#ddd6fe"]].map(([lbl,n,c,bg,bd])=>(
               <div key={lbl} style={{background:bg,border:"1px solid "+bd,borderRadius:9,padding:"8px 14px",minWidth:120}}>
                 <div style={{fontSize:24,fontWeight:800,color:c,lineHeight:1}}>{n}</div>
                 <div style={{fontSize:11,color:"#475569",marginTop:3}}>{lbl}</div>
@@ -14135,7 +14285,7 @@ function NvExcelImportModal({preview,onClose,onConfirm}){
           <div className="tbl-wrap" style={{maxHeight:420,overflowY:"auto"}}>
             <table>
               <thead><tr>
-                <th style={{width:34,textAlign:"center"}}><input type="checkbox" checked={sel.length===rows.length&&rows.length>0} onChange={e=>toggleAll(e.target.checked)}/></th>
+                <th style={{width:34,textAlign:"center"}}><input type="checkbox" title="Chọn / bỏ chọn tất cả vụ MỚI" checked={rows.filter(r=>!r._dup&&!r._maybe).length>0&&rows.filter(r=>!r._dup&&!r._maybe).every(r=>r._sel)} onChange={e=>toggleAll(e.target.checked)}/></th>
                 <th style={{minWidth:124}}>Mã vụ việc</th>
                 <th style={{minWidth:168}}>Ngày phát hiện</th>
                 <th style={{minWidth:190}}>Loại vụ việc</th>
@@ -14153,7 +14303,8 @@ function NvExcelImportModal({preview,onClose,onConfirm}){
                     <td>
                       <input className="fi" style={{padding:"4px 6px",fontSize:12,fontWeight:700,color:"var(--navy)",width:112}}
                         value={r.ma_vu_viec} onChange={e=>upd(r._key,{ma_vu_viec:e.target.value,_codeEdited:true})}/>
-                      {r._dup&&<div style={{fontSize:10,color:"#b45309",fontWeight:700,marginTop:2}}>⏭ đã có trong phần mềm</div>}
+                      {r._dup&&<div style={{fontSize:10,color:"#b45309",fontWeight:700,marginTop:2}}>⏭ {r._dupWhy||"đã có trong phần mềm"}</div>}
+                      {r._maybe&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:2}} title="Cùng ngày và có chung đối tượng với vụ đã có nhưng danh sách khác">❓ nghi trùng {r._dupWhy}</div>}
                     </td>
                     <td>
                       <input type="date" className="fi" style={{padding:"4px 6px",fontSize:12,width:140}}
@@ -14207,7 +14358,9 @@ function NvExcelImportModal({preview,onClose,onConfirm}){
           </div>
           <div style={{display:"flex",gap:8}}>
             <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
-            <button className="btn btn-green" disabled={!sel.length} onClick={()=>onConfirm(sel)}>✅ Xác nhận nhập {sel.length} vụ việc</button>
+            <button className="btn btn-green" disabled={!sel.length} onClick={()=>{
+              if(selTrung&&!window.confirm(selTrung+" vụ đang chọn là vụ ĐÃ CÓ / nghi trùng với dữ liệu hiện tại — nhập sẽ tạo bản ghi trùng.\nBạn vẫn muốn nhập?"))return;
+              onConfirm(sel);}}>✅ Xác nhận nhập {sel.length} vụ việc</button>
           </div>
         </div>
       </div>
@@ -14311,6 +14464,7 @@ function joinSubjectField(subs,f){
 }
 // Cột phụ (không thuộc F_NV_VUVIEC) cho danh sách "Số ma túy thu giữ được"
 const _NV_COL_MATUY={lbl:"Số ma túy thu giữ được (đối tượng – loại – khối lượng)",type:"textarea"};
+const _NV_COL_COTHUGIU={lbl:"Có thu giữ ma túy",type:"select"};
 // Liệt kê từng dòng ma túy thu giữ kèm tên đối tượng, mỗi dòng 1 hàng trong ô
 function nvMaTuyChiTietText(rec){
   const subs=rec.doi_tuong||[];
@@ -14322,25 +14476,35 @@ function nvMaTuyChiTietText(rec){
   }).join("\n");
 }
 function buildNghiepVuExportRows(records){
-  const headers=["STT",...F_NV_VUVIEC.map(f=>f.lbl),_NV_COL_MATUY.lbl,...F_NV_DOITUONG.map(f=>f.lbl)];
+  const headers=["STT",...F_NV_VUVIEC.map(f=>f.lbl),_NV_COL_MATUY.lbl,_NV_COL_COTHUGIU.lbl,...F_NV_DOITUONG.map(f=>f.lbl)];
   const rows=[];
   const subCounts=[]; // số đối tượng trong mỗi hàng — dùng để tính chiều cao hàng
   records.forEach((r,i)=>{
     const caseVals=F_NV_VUVIEC.map(f=>fieldValNV(r,f));
     const subs=(r.doi_tuong&&r.doi_tuong.length)?r.doi_tuong:[{}];
     const subjectVals=F_NV_DOITUONG.map(f=>joinSubjectField(subs,f));
-    rows.push([String(i+1),...caseVals,nvMaTuyChiTietText(r),...subjectVals]);
+    rows.push([String(i+1),...caseVals,nvMaTuyChiTietText(r),nvCoThuGiuMaTuy(r)?"Có":"Không",...subjectVals]);
     subCounts.push(Math.max(subs.length,(r.ma_tuy_thu||[]).length));
   });
+  // Dòng TỔNG CỘNG ma túy thu giữ (đã chuẩn hoá tên loại) ở cuối bảng
+  const tk=nvTongHopMaTuy(records);
+  if(tk.list.length){
+    const tong=headers.map(()=>"");
+    tong[1]="TỔNG CỘNG";
+    tong[2]=tk.soVu+" vụ có thu giữ ma túy";
+    tong[1+F_NV_VUVIEC.length]=tk.list.map(g=>`${g.ten}: ${nvKLText(g.tong)} ${g.dvt}`).join("\n");
+    tong[2+F_NV_VUVIEC.length]=String(tk.soVu);
+    rows.push(tong);subCounts.push(tk.list.length);
+  }
   return{headers,rows,subCounts};
 }
-function exportNghiepVuExcel(title,records,period,toast){
+function exportNghiepVuExcel(title,records,period,toast,fileTag){
   if(!window.XLSX){toast("Chưa tải được thư viện xuất Excel. Kiểm tra kết nối mạng.","error");return;}
   if(!records.length){toast("Không có dữ liệu phù hợp bộ lọc để xuất báo cáo","error");return;}
   try{
     const{headers,rows,subCounts}=buildNghiepVuExportRows(records);
     const ws=buildSheet(`BÁO CÁO THỐNG KÊ ${title.toUpperCase()}`,period,headers,rows);
-    const fieldsAll=[null,...F_NV_VUVIEC,_NV_COL_MATUY,...F_NV_DOITUONG]; // null = cột STT
+    const fieldsAll=[null,...F_NV_VUVIEC,_NV_COL_MATUY,_NV_COL_COTHUGIU,...F_NV_DOITUONG]; // null = cột STT
     ws["!cols"]=fieldsAll.map(f=>{
       if(!f)return{wch:6};
       if(f.type==="textarea")return{wch:38};
@@ -14365,19 +14529,41 @@ function exportNghiepVuExcel(title,records,period,toast){
     });
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"BaoCao");
-    saveWorkbookA4(wb,`BaoCao_${title.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    // Sheet 2: tổng hợp ma túy thu giữ theo loại đã chuẩn hoá + số liệu chung
+    const tk=nvTongHopMaTuy(records);
+    const soKGM=records.filter(r=>r.mua_ban_kgm==="Có").length;
+    const rows2=tk.list.map((g,i)=>[String(i+1),g.ten,nvKLText(g.tong),g.dvt,String(g.vu.size),String(g.dong)]);
+    if(!rows2.length)rows2.push(["","Không có ma túy thu giữ trong danh sách","","","",""]);
+    rows2.push(["","","","","",""]);
+    rows2.push(["","Tổng số vụ việc trong báo cáo",String(records.length),"vụ","",""]);
+    rows2.push(["","Số vụ mua bán qua không gian mạng",String(soKGM),"vụ","",""]);
+    rows2.push(["","Số vụ có thu giữ ma túy",String(tk.soVu),"vụ","",""]);
+    const ws2=buildSheet("TỔNG HỢP MA TÚY THU GIỮ",period,["STT","Loại ma túy (đã chuẩn hóa)","Tổng khối lượng","Đơn vị tính","Số vụ có thu giữ","Số lần thu giữ"],rows2);
+    ws2["!cols"]=[{wch:6},{wch:42},{wch:18},{wch:12},{wch:16},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,ws2,"TongHopMaTuy");
+    saveWorkbookA4(wb,`BaoCao_${(fileTag||title).replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
     toast("✅ Đã xuất báo cáo Excel!","success");
   }catch(e){toast("❌ Lỗi tạo báo cáo: "+e.message,"error");}
 }
 
 // ── Modal chọn bộ lọc trước khi xuất báo cáo thống kê ──
 function NghiepVuExportModal({title,data,dateRange,onClose,toast}){
-  const [mode,setMode]=useState("all"); // all | code | range
+  const [mode,setMode]=useState("all"); // all | code | range | chuyende
   const [code,setCode]=useState("");
   const [from,setFrom]=useState(dateRange?.from||"");
   const [to,setTo]=useState(dateRange?.to||"");
+  const [cdKGM,setCdKGM]=useState(true);    // chuyên đề: mua bán qua không gian mạng
+  const [cdMT,setCdMT]=useState(true);      // chuyên đề: có thu giữ ma túy
   const {style:dragStyle,dragHandleProps}=useDraggableModal();
   const inpStyle={width:"100%",padding:"8px 11px",border:"1.5px solid #d0d7e8",borderRadius:7,fontSize:13,color:"#1a2340",outline:"none",boxSizing:"border-box"};
+  const ngayVu=r=>String(r.ngay_phat_hien||r._created||"").slice(0,10);
+  const inRange=r=>{
+    if(!from&&!to)return true;
+    const d=ngayVu(r);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;
+    return !(from&&d<from)&&!(to&&d>to);
+  };
+  const saiKhoang=!!(from&&to&&from>to);
 
   const matched=useMemo(()=>{
     let list=data;
@@ -14385,25 +14571,35 @@ function NghiepVuExportModal({title,data,dateRange,onClose,toast}){
       const q=code.trim().toLowerCase();
       list=q?data.filter(r=>String(r.ma_vu_viec||"").toLowerCase().includes(q)):[];
     }else if(mode==="range"){
-      list=data.filter(r=>{
-        if(!from&&!to)return true;
-        const d=new Date(r.ngay_phat_hien||r._created||"");
-        if(isNaN(d))return false;
-        if(from&&d<new Date(from))return false;
-        if(to&&d>new Date(to+"T23:59:59"))return false;
-        return true;
-      });
+      list=saiKhoang?[]:data.filter(inRange);
+    }else if(mode==="chuyende"){
+      list=saiKhoang?[]:data.filter(r=>inRange(r)&&((cdKGM&&r.mua_ban_kgm==="Có")||(cdMT&&nvCoThuGiuMaTuy(r))));
     }
-    return list.sort((a,b)=>new Date(b.ngay_phat_hien||b._created||0)-new Date(a.ngay_phat_hien||a._created||0));
-  },[mode,code,from,to,data]);
+    return [...list].sort((a,b)=>String(ngayVu(b)).localeCompare(String(ngayVu(a))));
+  },[mode,code,from,to,data,cdKGM,cdMT]);
+  const tk=useMemo(()=>nvTongHopMaTuy(matched),[matched]);
+  const soKGM=matched.filter(r=>r.mua_ban_kgm==="Có").length;
 
   const doExport=()=>{
-    let period="(Toàn bộ dữ liệu)";
+    const khoang=(from&&to)?`Từ ngày ${fmtDate(from)} đến ngày ${fmtDate(to)}`:from?`Từ ngày ${fmtDate(from)}`:to?`Đến ngày ${fmtDate(to)}`:"Toàn bộ thời gian";
+    let period="(Toàn bộ dữ liệu)",tieuDe=title,tag=title;
     if(mode==="code")period=`(Mã vụ việc: "${code.trim()}")`;
-    else if(mode==="range")period=(from&&to)?`(Từ ngày ${fmtDate(from)} đến ngày ${fmtDate(to)})`:"(Toàn bộ thời gian)";
-    exportNghiepVuExcel(title,matched,period,toast);
+    else if(mode==="range")period=`(${khoang})`;
+    else if(mode==="chuyende"){
+      const cd=[cdKGM?"mua bán qua không gian mạng":"",cdMT?"có thu giữ ma túy":""].filter(Boolean).join(" / ");
+      period=`(Vụ việc ${cd} – ${khoang})`;
+      tieuDe=title+" – "+cd;tag=title+"_chuyen_de";
+    }
+    exportNghiepVuExcel(tieuDe,matched,period,toast,tag);
     onClose();
   };
+  const dateRow=(
+    <div style={{marginLeft:24,display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{flex:1}}><DateInputVN value={from} onChange={setFrom}/></div>
+      <span style={{color:"#94a3b8",fontSize:12}}>→</span>
+      <div style={{flex:1}}><DateInputVN value={to} onChange={setTo}/></div>
+    </div>
+  );
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}}>
@@ -14427,15 +14623,32 @@ function NghiepVuExportModal({title,data,dateRange,onClose,toast}){
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
               <input type="radio" checked={mode==="range"} onChange={()=>setMode("range")}/> Theo khoảng thời gian
             </label>
-            {mode==="range"&&
-              <div style={{marginLeft:24,display:"flex",gap:8,alignItems:"center"}}>
-                <input type="date" style={inpStyle} value={from} onChange={e=>setFrom(e.target.value)}/>
-                <span style={{color:"#94a3b8",fontSize:12}}>→</span>
-                <input type="date" style={inpStyle} value={to} onChange={e=>setTo(e.target.value)}/>
-              </div>}
+            {mode==="range"&&dateRow}
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
+              <input type="radio" checked={mode==="chuyende"} onChange={()=>setMode("chuyende")}/> Theo chuyên đề (mua bán qua mạng / thu giữ ma túy)
+            </label>
+            {mode==="chuyende"&&<>
+              {dateRow}
+              <div style={{marginLeft:24,display:"flex",flexDirection:"column",gap:5,fontSize:12.5}}>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer"}}>
+                  <input type="checkbox" checked={cdKGM} onChange={e=>setCdKGM(e.target.checked)}/> Mua bán qua không gian mạng
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer"}}>
+                  <input type="checkbox" checked={cdMT} onChange={e=>setCdMT(e.target.checked)}/> Có thu giữ ma túy
+                </label>
+                <span style={{fontSize:11,color:"#64748b"}}>Vụ thuộc <b>một trong</b> các chuyên đề đã tích sẽ được xuất.</span>
+              </div>
+            </>}
           </div>
-          <div style={{background:"#f0f6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",fontSize:12.5,color:"#1e3a6e",fontWeight:600,marginBottom:16}}>
+          {saiKhoang&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"7px 12px",fontSize:12,color:"#b91c1c",fontWeight:600,marginBottom:12}}>
+            ⚠️ "Từ ngày" đang sau "Đến ngày" — vui lòng chọn lại.
+          </div>}
+          <div style={{background:"#f0f6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",fontSize:12.5,color:"#1e3a6e",fontWeight:600,marginBottom:16,lineHeight:1.6}}>
             📋 Sẽ xuất <b>{matched.length}</b> vụ việc — đầy đủ tất cả các trường (vụ việc + từng đối tượng) ra file Excel.
+            <div style={{fontWeight:500,fontSize:12}}>
+              🌐 Mua bán qua không gian mạng: <b>{soKGM}</b> vụ · 💊 Có thu giữ ma túy: <b>{tk.soVu}</b> vụ
+              {tk.list.length>0&&<div style={{marginTop:2}}>Tổng ma túy thu giữ: {tk.list.map(g=>g.ten+" "+nvKLText(g.tong)+" "+g.dvt).join(" · ")}</div>}
+            </div>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
             <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
@@ -14728,6 +14941,22 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
     }catch(e){toast("❌ Lỗi xóa: "+e.message,"error");}
   };
 
+  // Xóa TOÀN BỘ vụ việc (kèm các bản ghi đã tự chuyển sang PL VỤ / Đối tượng bị bắt trên địa bàn);
+  // bản ghi nhập tay ở 2 mục kia không bị đụng đến. Dùng để làm sạch rồi chèn lại file Excel khác.
+  const delAll=async()=>{
+    const n=data.length;
+    try{
+      await saveStore(storeKey,[]);setData([]);
+      if(syncTargets)await runSync([],{silent:true});
+      setSearch("");setPg(1);
+      toast(`🗑️ Đã xóa toàn bộ ${n} vụ việc${syncTargets?" (kèm bản ghi đã tự chuyển sang PL VỤ và Đối tượng bị bắt trên địa bàn)":""}. Có thể chèn file Excel mới.`,"info");
+    }catch(e){toast("❌ Lỗi xóa toàn bộ: "+e.message,"error");}
+  };
+  const askDelAll=()=>{
+    if(!data.length){toast("Danh sách đang trống","info");return;}
+    if(!window.confirm(`XÓA TOÀN BỘ ${data.length} vụ việc?\n\n• Các bản ghi tự chuyển sang PL VỤ (PC04) và Đối tượng bị bắt trên địa bàn từ các vụ này cũng bị xóa.\n• Bản ghi bạn tự nhập tay ở 2 mục đó được giữ nguyên.\n• Không thể hoàn tác — nên bấm "Xuất file Excel tổng hợp" hoặc sao lưu trước.`))return;
+    setPwdAction({type:"delall"});
+  };
   const [exportOpen,setExportOpen]=useState(false);
 
   // ── Chèn vụ việc từ file Excel tổng hợp (chỉ áp dụng cho "Vụ việc ma túy mới") ──
@@ -14755,6 +14984,8 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
         }
         const res=ivBuildRowsFromSheet(found.aoa,found.hdr,data);
         if(!res.rows.length){toast("Không có dòng dữ liệu hợp lệ nào trong sheet \""+found.sn+"\"","warning");return;}
+        const nMoi=res.rows.filter(r=>!r._dup&&!r._maybe).length;
+        if(nMoi===0)toast("File không có vụ việc mới: toàn bộ "+res.rows.length+" vụ đã có trong phần mềm (hoặc nghi trùng). Xem bảng xem trước để kiểm tra.","warning");
         setExcelPreview({...res,fileName:file.name+" – sheet \""+found.sn+"\" – "+res.rows.length+" vụ việc"});
       }catch(err){toast("❌ Lỗi đọc file Excel: "+err.message,"error");}
       finally{setExcelBusy(false);}
@@ -14781,6 +15012,7 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
   const doPwdConfirm=()=>{
     if(!pwdAction)return;
     if(pwdAction.type==="edit")setForm({mode:"edit",rec:pwdAction.rec});
+    else if(pwdAction.type==="delall")delAll();
     else del(pwdAction.rec);
     setPwdAction(null);
   };
@@ -14809,6 +15041,7 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
           </div>
         </div>
         <div className="btn-grp">
+          {syncTargets&&<button className="btn btn-ghost btn-sm" style={{color:"var(--red)",borderColor:"#fecaca"}} disabled={syncing||!data.length} title="Xóa toàn bộ vụ việc để chèn lại file Excel khác (yêu cầu mật khẩu)" onClick={askDelAll}>🗑️ Xóa toàn bộ</button>}
           {syncTargets&&<button className="btn btn-ghost btn-sm" disabled={syncing} title="Chuyển lại toàn bộ vụ việc sang PL VỤ (PC04) và Đối tượng bị bắt trên địa bàn theo Tên đơn vị đang cấu hình" onClick={()=>runSync(data)}>{syncing?"⏳ Đang đồng bộ...":"🔄 Đồng bộ lại 2 mục"}</button>}
           <div className="srch-wrap">
             <span className="srch-icon">🔍</span>
@@ -14853,11 +15086,13 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
               <th style={{minWidth:200}}>Nội dung vụ việc</th>
               <th style={{minWidth:160}}>Đối tượng</th>
               <th style={{minWidth:160}}>Đơn vị bắt/mời</th>
+              <th style={{minWidth:110,textAlign:"center"}} title="Vụ việc có yếu tố mua bán qua không gian mạng hay không">🌐 Không gian mạng</th>
+              <th style={{minWidth:150,textAlign:"center"}} title="Vụ việc có thu giữ ma túy hay không">💊 Thu giữ ma túy</th>
               <th style={{minWidth:130}}>Cán bộ làm trực tiếp</th>
               <th style={{width:120,textAlign:"center"}}>Thao tác</th>
             </tr></thead>
             <tbody>
-              {paged.length===0&&<tr><td colSpan={9}>
+              {paged.length===0&&<tr><td colSpan={11}>
                 <div style={{textAlign:"center",padding:"48px 20px",color:"var(--muted)"}}>
                   <div style={{fontSize:52,marginBottom:12,opacity:.4}}>📂</div>
                   <p style={{fontSize:14,fontWeight:600,color:"var(--text2)",marginBottom:4}}>Chưa có vụ việc nào</p>
@@ -14881,6 +15116,20 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
                       </div>}
                   </td>
                   <td>{r.don_vi_bat_moi||"—"}</td>
+                  <td style={{textAlign:"center"}}>
+                    {r.mua_ban_kgm==="Có"
+                      ?<span className="badge" style={{background:"#fef2f2",color:"var(--red)",border:"1px solid #fecaca"}} title={r.mua_ban_kgm_mota||"Có yếu tố không gian mạng"}>🌐 Có</span>
+                      :<span style={{color:"#94a3b8",fontSize:12}}>Không</span>}
+                  </td>
+                  <td style={{textAlign:"center"}}>
+                    {(()=>{const tk=nvTongHopMaTuy([r]);
+                      return tk.soVu>0
+                        ?<div title={nvTongHopText(tk)}>
+                           <span className="badge" style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa"}}>💊 Có</span>
+                           <div style={{fontSize:10.5,color:"var(--muted)",marginTop:2,lineHeight:1.35}}>{tk.list.map(g=>g.ten.replace(/\s*\(.*\)/,"")+" "+nvKLText(g.tong)+" "+g.dvt).join(" · ")}</div>
+                         </div>
+                        :<span style={{color:"#94a3b8",fontSize:12}}>Không</span>;})()}
+                  </td>
                   <td>{r.can_bo_lam_truc_tiep||"—"}</td>
                   <td><div className="actions">
                     <button className="btn btn-sm btn-icon act-view" title="Xem chi tiết" onClick={()=>setViewRec(r)}>👁</button>
@@ -15165,6 +15414,7 @@ function App(){
                 nghi_van:nghi_van.filter(r=>!r.da_loai).length,
                 suu_tra:suu_tra.filter(r=>!r.da_loai).length,
                 vu_an:vu_an.filter(r=>!r.da_loai).length,
+                vu_viec_moi:vuViecMoi.length,
                 bang_nhom:bang_nhom.filter(r=>!r.da_loai).length,
                 diem_tc:diem_tc.filter(r=>!r.da_loai).length,
                 hd26_dt:hd26_dt.filter(r=>!r.da_loai).length,
@@ -15237,7 +15487,7 @@ function App(){
             syncTargets={{vuAn:vu_an,setVuAn,batDiaBan,setBatDiaBan}}/>}
           {page==="khu_pho"&&<KhuPhoPage khuPho={khuPho} setKhuPho={setKhuPho} toast={toast}/>}
           {page==="can_bo"&&<DanhSachCanBoPage canBoData={canBo} setCanBoData={setCanBo} toast={toast}/>}
-          {page==="ra_soat"&&<RaSoatPage khuPho={khuPho} raSoat={raSoat} setRaSoat={setRaSoat} data={allData} dateRange={dateRange} toast={toast}/>}
+          {page==="ra_soat"&&<RaSoatPage khuPho={khuPho} raSoat={raSoat} setRaSoat={setRaSoat} data={allData} dateRange={dateRange} setDateRange={setDateRange} toast={toast}/>}
           {page==="bao_cao"&&<ReportPage data={allData} onSaveReport={saveReport} toast={toast}/>}
           {page==="canh_bao"&&<CanhBaoPage data={allData} onNavigate={p=>setPage(p)}/>}
           {page==="da_loai_db"&&<DaLoaiDataboardPage doiTuong={doiTuong} setDoiTuong={setDoiTuong} toast={toast}/>}
