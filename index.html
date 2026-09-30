@@ -1707,16 +1707,29 @@ const OPT_LOAI_MA_TUY_NV=["Heroin","Ma túy đá (MET)","Cần sa (THC)","Thuố
 const OPT_NOI_CAP_CCCD=["Bộ Công an","Cục CSQLHC về TTXH"];
 
 // Trường cấp Vụ việc
+const OPT_NGUON_TIN_NV=["Tin báo","Tố giác tội phạm","Kiến nghị khởi tố","Tự phát hiện","Đơn vị khác chuyển đến"];
 const F_NV_VUVIEC=[
   {k:"ma_vu_viec",lbl:"Mã vụ việc",type:"text",req:true,ph:"VD: VV-2026-001",grp:"Thông tin vụ việc"},
   {k:"loai_vu_viec",lbl:"Loại vụ việc",type:"select_other",opts:OPT_LOAI_VU_VIEC,grp:"Thông tin vụ việc"},
   {k:"ngay_phat_hien",lbl:"Ngày phát hiện",type:"date",req:true,grp:"Thông tin vụ việc"},
+  {k:"noi_xay_ra",lbl:"Nơi xảy ra vụ việc",type:"text",ph:"VD: 64/5 Đồng Đen, khu phố 32, phường Tân Bình",grp:"Thông tin vụ việc"},
+  {k:"ten_nguon_tin",lbl:"Tên nguồn tin",type:"select_other",opts:OPT_NGUON_TIN_NV,def:"Tin báo",grp:"Thông tin vụ việc"},
   {k:"noi_dung_vu_viec",lbl:"Nội dung vụ việc",type:"textarea",rows:3,grp:"Thông tin vụ việc"},
   {k:"don_vi_bat_moi",lbl:"Đơn vị bắt/mời",type:"text",def:CONFIG.donVi,grp:"Xử lý vụ việc"},
-  {k:"ngay_bat_moi",lbl:"Ngày bắt/mời",type:"date",grp:"Xử lý vụ việc"},
+  {k:"mua_ban_kgm",lbl:"Mua bán qua không gian mạng",type:"select",opts:["Không","Có"],def:"Không",grp:"Xử lý vụ việc"},
+  {k:"mua_ban_kgm_mota",lbl:"Phương thức mua bán qua không gian mạng",type:"textarea",rows:2,ph:"VD: Liên hệ qua Telegram nickname “Kute”, thanh toán tiền mặt…",grp:"Xử lý vụ việc"},
   {k:"ket_qua_xu_ly",lbl:"Kết quả xử lý",type:"textarea",rows:2,grp:"Xử lý vụ việc"},
+  {k:"ghi_chu",lbl:"Ghi chú",type:"textarea",rows:2,grp:"Xử lý vụ việc"},
   {k:"dtv_thu_ly_chinh",lbl:"ĐTV thụ lý chính",type:"text",ph:"VD: Nguyễn Văn A",grp:"Cán bộ thụ lý"},
   {k:"can_bo_lam_truc_tiep",lbl:"Cán bộ làm trực tiếp",type:"text",ph:"VD: Trần Thị B",grp:"Cán bộ thụ lý"},
+];
+// ── Số ma túy thu giữ được (nhiều dòng trong 1 vụ việc, mỗi dòng gắn với 1 đối tượng) ──
+const OPT_DON_VI_MA_TUY=["gam","ml","viên","cây","kg"];
+const F_NV_MATUY=[
+  {k:"dt_id",lbl:"Đối tượng",type:"subject"},
+  {k:"loai_ma_tuy",lbl:"Loại ma túy thu giữ",type:"select_other",opts:OPT_LOAI_MA_TUY_NV},
+  {k:"khoi_luong",lbl:"Khối lượng thu giữ",type:"text",ph:"VD: 7,5519"},
+  {k:"don_vi_tinh",lbl:"Đơn vị tính",type:"select",opts:OPT_DON_VI_MA_TUY,def:"gam"},
 ];
 // Trường cấp Đối tượng (nằm trong 1 Vụ việc, có thể nhiều đối tượng)
 const F_NV_DOITUONG=[
@@ -2423,6 +2436,196 @@ function computeKhuPhoHotspot(khuPho,subjects,loaiSubjects){
     tongDaLoai:stats.reduce((a,s)=>a+s.daLoai,0),
   };
 }
+// ══════════════════════════════════════════════════════════════════════
+// BẢN ĐỒ NHIỆT VỤ VIỆC THEO KHU PHỐ
+// Bóc khu phố từ địa chỉ, NHƯNG CHỈ LẤY khu phố nằm trong phường/xã của đơn vị
+// (lấy theo "Tên đơn vị" ở Cấu hình hệ thống). Địa chỉ ghi "khu phố 4, phường
+// Bình Trị Đông" sẽ KHÔNG được tính, vì khu phố đó thuộc phường khác.
+// ══════════════════════════════════════════════════════════════════════
+const _kpSegs=s=>String(s||"").split(/[,\n\r;]+/).map(x=>x.trim()).filter(Boolean);
+const _kpNorm=s=>stripDiacriticsVN(String(s||"")).toLowerCase().replace(/[.\-\/\\|()\[\]]/g," ").replace(/\s+/g," ").trim();
+// Đoạn địa chỉ này có nhắc tới cấp phường/xã/thị trấn/đặc khu không?
+const _KP_ADMIN_RE=/(^|\s)(phuong|p|xa|x|thi tran|tt|dac khu|dk)\s+[a-z0-9]/;
+const _kpCoCapPhuong=seg=>_KP_ADMIN_RE.test(_kpNorm(seg));
+// Đoạn địa chỉ này có mã khu phố/ấp/khóm/tổ dân phố không? → trả về số
+const _KP_TOKEN_RE=/(?:^|\s)(?:khu\s*pho|kp|ap|khom|to\s*dan\s*pho|tdp)\s*(\d{1,3})(?!\d)/;
+function _kpSoTrongDoan(seg){
+  const m=_kpNorm(seg).match(_KP_TOKEN_RE);
+  return m?String(parseInt(m[1],10)):null;
+}
+// Bóc khu phố THUỘC ĐỊA BÀN ĐƠN VỊ từ 1 địa chỉ đầy đủ.
+// Trả về {so, trangThai}:
+//   trangThai = "ok"           → khu phố nằm trong phường/xã của đơn vị
+//               "phuong_khac"  → có khu phố nhưng của phường/xã khác → BỎ QUA
+//               "thieu_phuong" → có khu phố nhưng địa chỉ không ghi phường/xã
+//               "khong_co"     → địa chỉ không ghi khu phố
+function kpTrongDiaBan(addr,db){
+  if(!addr||!db)return{so:null,trangThai:"khong_co"};
+  const segs=_kpSegs(addr);
+  let pending=null,coPhuongKhac=false;
+  for(let i=0;i<segs.length;i++){
+    const so=_kpSoTrongDoan(segs[i]);
+    if(so===null)continue;
+    // Tìm cấp phường/xã đứng SAU khu phố (cùng đoạn hoặc các đoạn kế tiếp)
+    let thay=false,dung=false;
+    for(let j=i;j<segs.length;j++){
+      if(!_kpCoCapPhuong(segs[j]))continue;
+      thay=true;dung=addrInDiaBan(segs[j],db);
+      break;
+    }
+    if(!thay){if(pending===null)pending=so;continue;}
+    if(dung)return{so,trangThai:"ok"};
+    coPhuongKhac=true;   // khu phố của phường khác → tiếp tục tìm khu phố khác
+  }
+  if(pending!==null)return{so:pending,trangThai:"thieu_phuong"};
+  return{so:null,trangThai:coPhuongKhac?"phuong_khac":"khong_co"};
+}
+// Ghép số khu phố với danh mục Khu phố đã khai báo (khớp theo con số trong tên)
+function _kpIndexTheoSo(khuPho){
+  const map=new Map();
+  (khuPho||[]).forEach(kp=>{
+    const ten=kp.ten_moi||kp.ten_cu||"";
+    const m=_kpNorm(ten).match(/(\d{1,3})(?!\d)/);
+    if(m&&!map.has(String(parseInt(m[1],10))))map.set(String(parseInt(m[1],10)),kp.id);
+  });
+  return map;
+}
+// Khóa nhận dạng 1 người (để đếm không trùng giữa các vụ việc)
+const _kpNguoiKey=s=>_kpNorm(s&&s.ho_ten)+"|"+String((s&&s.cccd)||"").replace(/\D/g,"");
+// Lấy khu phố của 1 đối tượng theo thứ tự: nơi ở hiện tại → tạm trú → thường trú
+function kpCuaDoiTuong(s,db){
+  for(const k of["noi_o_ht","tam_tru","thuong_tru"]){
+    const r=kpTrongDiaBan(dv(s||{},k),db);
+    if(r.trangThai==="ok")return r;
+  }
+  for(const k of["noi_o_ht","tam_tru","thuong_tru"]){
+    const r=kpTrongDiaBan(dv(s||{},k),db);
+    if(r.trangThai==="thieu_phuong")return r;
+  }
+  return{so:null,trangThai:"khong_co"};
+}
+// Lấy tên phường/xã KHÁC (không phải địa bàn đơn vị) ghi trong địa chỉ. Không có → ""
+function kpPhuongKhac(addr,db){
+  if(!addr||!db)return"";
+  if(addrInDiaBan(addr,db))return"";
+  for(const seg of String(addr).split(/[,;\n\r]+/)){
+    let m=seg.match(/(?:^|\s)(phường|xã|thị\s*trấn|đặc\s*khu)\s+([^,;]+)/i),loai="";
+    if(m)loai=m[1];
+    else{
+      m=seg.match(/(?:^|\s)(p|x|tt)\.\s*([A-Za-zÀ-ỹĐđ][^,;]*|\d{1,2}(?!\d))/i);
+      if(m)loai={p:"phường",x:"xã",tt:"thị trấn"}[m[1].toLowerCase()];
+    }
+    if(!m)continue;
+    const ten=m[2].replace(/\s+(tp|thành phố|quận|huyện|tỉnh)(?=[\s.]|$).*$/i,"").replace(/[\s.]+$/,"").trim();
+    if(!ten)continue;
+    const l=loai.replace(/\s+/g," ").toLowerCase();
+    return l.charAt(0).toUpperCase()+l.slice(1)+" "+ten;
+  }
+  return"";
+}
+const _ngoaiPhuongDiaChi=(addr,db)=>{
+  const t=kpPhuongKhac(addr,db);
+  if(t)return t;
+  return kpTrongDiaBan(addr,db).trangThai==="phuong_khac"?"Phường/xã khác (chưa rõ tên)":"";
+};
+// Phân loại 1 vụ việc theo địa bàn: trong (có/không có khu phố) | ngoai (phường khác) | khong_ro
+function vuTrangThaiDiaBan(v,db){
+  let r=kpTrongDiaBan(v.noi_xay_ra,db),nguon="noi_xay_ra";
+  if(r.trangThai!=="ok"){
+    const r2=kpTrongDiaBan(v.noi_dung_vu_viec,db);
+    if(r2.trangThai==="ok"){r=r2;nguon="noi_dung";}
+  }
+  if(r.trangThai==="ok")return{loai:"trong",so:r.so,nguon};
+  if(addrInDiaBan(v.noi_xay_ra,db))return{loai:"trong",so:null,nguon};
+  const p=_ngoaiPhuongDiaChi(v.noi_xay_ra,db)||(r.trangThai==="phuong_khac"?"Phường/xã khác (chưa rõ tên)":"");
+  if(p)return{loai:"ngoai",phuong:p};
+  return{loai:"khong_ro"};
+}
+// Đối tượng ở phường/xã khác: lấy tên từ địa chỉ đầu tiên không thuộc địa bàn
+function dtPhuongKhac(s,db){
+  for(const k of NV_ADDR_FIELDS){
+    const a=dv(s||{},k);
+    if(!a)continue;
+    const p=_ngoaiPhuongDiaChi(a,db);
+    if(p)return p;
+  }
+  return"";
+}
+// Thống kê vụ việc + đối tượng theo khu phố; đồng thời tách đối tượng/vụ NGOÀI địa bàn
+function computeVuViecHotspot(khuPho,vuViecList,batDiaBanList,db){
+  const stats=(khuPho||[]).map(kp=>({
+    id:kp.id,ten:kp.ten_moi||kp.ten_cu||"(chưa đặt tên)",
+    soVu:0,soDT:0,vuList:[],nguoi:new Set(),theoNoiDung:0,
+  }));
+  const byId=new Map(stats.map(s=>[s.id,s]));
+  const idTheoSo=_kpIndexTheoSo(khuPho);
+  const chuaXacDinh=[],vuNgoai=[],ngoaiDanhMuc=new Map(),ngoaiPhuong=new Map();
+  const ghiNgoai=(ten,vu,dt)=>{
+    const o=ngoaiPhuong.get(ten)||{ten,vu:0,dt:0};
+    if(vu)o.vu++;if(dt)o.dt++;
+    ngoaiPhuong.set(ten,o);
+  };
+  const nhanDanhMuc=(so,rec)=>{const a=ngoaiDanhMuc.get(so)||[];a.push(rec);ngoaiDanhMuc.set(so,a);};
+  // ── Vụ việc ──
+  (vuViecList||[]).forEach(v=>{
+    const nhanVu={_id:v._id,ma:v.ma_vu_viec||"(chưa có mã)",ngay:v.ngay_phat_hien||"",noi:v.noi_xay_ra||""};
+    const t=vuTrangThaiDiaBan(v,db);
+    if(t.loai==="ngoai"){vuNgoai.push({...nhanVu,phuong:t.phuong});ghiNgoai(t.phuong,true,false);return;}
+    if(t.loai==="khong_ro"||t.so===null){chuaXacDinh.push({...nhanVu,ghi:t.loai==="khong_ro"?"chưa xác định được phường/xã":"địa chỉ không ghi khu phố"});return;}
+    const id=idTheoSo.get(t.so);
+    if(id===undefined){nhanDanhMuc(t.so,nhanVu);chuaXacDinh.push({...nhanVu,ghi:"khu phố "+t.so+" chưa có trong danh mục"});return;}
+    const s=byId.get(id);
+    if(t.nguon==="noi_dung")s.theoNoiDung++;
+    s.soVu++;s.vuList.push(nhanVu);
+  });
+  // ── Đối tượng: lấy trực tiếp từ vụ việc (+ hồ sơ nhập tay ở "Đối tượng bị bắt trên địa bàn") ──
+  let dtTong=0,dtTrong=0,dtNgoai=0;
+  const dtChuaKP=[],dtKhongRo=[];
+  const nguon=[...(vuViecList||[]),...(batDiaBanList||[]).filter(r=>!r._src_vv)];
+  nguon.forEach(v=>{
+    (v.doi_tuong||[]).forEach(s0=>{
+      dtTong++;
+      const ma=v.ma_vu_viec||"";
+      const ho_ten=(s0.ho_ten||"").trim()||"(chưa có tên)";
+      const diaChi=NV_ADDR_FIELDS.map(k=>dv(s0,k)).filter(Boolean).join(" | ");
+      if(!db){dtKhongRo.push({ho_ten,ma,diaChi,ghi:"chưa nhận diện được địa bàn đơn vị"});return;}
+      if(subjectInDiaBan(s0,db)){
+        dtTrong++;
+        const r=kpCuaDoiTuong(s0,db);
+        if(r.so===null){dtChuaKP.push({ho_ten,ma,diaChi,ghi:"địa chỉ không ghi khu phố"});return;}
+        const id=idTheoSo.get(r.so);
+        if(id===undefined){nhanDanhMuc(r.so,{ma,ten:ho_ten});dtChuaKP.push({ho_ten,ma,diaChi,ghi:"khu phố "+r.so+" chưa có trong danh mục"});return;}
+        const s=byId.get(id);s.soDT++;s.nguoi.add(_kpNguoiKey(s0));
+        return;
+      }
+      const p=dtPhuongKhac(s0,db);
+      if(p){dtNgoai++;ghiNgoai(p,false,true);return;}
+      dtKhongRo.push({ho_ten,ma,diaChi,ghi:"địa chỉ không ghi phường/xã"});
+    });
+  });
+  stats.forEach(s=>{s.soNguoi=s.nguoi.size;delete s.nguoi;});
+  stats.sort((a,b)=>b.soVu-a.soVu||b.soDT-a.soDT||a.ten.localeCompare(b.ten,"vi"));
+  const tongVu=stats.reduce((a,s)=>a+s.soVu,0);
+  const tongDT=stats.reduce((a,s)=>a+s.soDT,0);
+  const soKpCoVu=stats.filter(s=>s.soVu>0).length;
+  const top3=stats.slice(0,3).reduce((a,s)=>a+s.soVu,0);
+  return{
+    stats,tongVu,tongDT,soKpCoVu,tongKp:stats.length,
+    dtTong,dtTrong,dtNgoai,dtKhongRo:dtKhongRo.length,dtKhongRoList:dtKhongRo,dtChuaKP,
+    tongVuTatCa:(vuViecList||[]).length,
+    vuNgoai,ngoaiDiaBan:vuNgoai,
+    ngoaiTheoPhuong:[...ngoaiPhuong.values()].sort((a,b)=>b.dt+b.vu-a.dt-a.vu||a.ten.localeCompare(b.ten,"vi")),
+    tongNguoi:stats.reduce((a,s)=>a+s.soNguoi,0),
+    maxVu:stats.reduce((m,s)=>Math.max(m,s.soVu),0),
+    binhQuan:soKpCoVu?Math.round(tongVu/soKpCoVu*10)/10:0,
+    top3Share:tongVu?Math.round(top3/tongVu*100):0,
+    kpSach:stats.filter(s=>s.soVu===0).length,
+    chuaXacDinh,
+    ngoaiDanhMuc:[...ngoaiDanhMuc.entries()].map(([so,arr])=>({so,n:arr.length})).sort((a,b)=>+a.so-+b.so),
+    theoNoiDung:stats.reduce((a,s)=>a+s.theoNoiDung,0),
+  };
+}
+
 const filterActive=(list,from,to,dkey="ngay_vao_so")=>{
   const active=list.filter(r=>!r.da_loai);
   if(!from&&!to)return active;
@@ -4565,10 +4768,25 @@ function computeStats(data,dr){
     _ban:hdB,_diem:hdD,_all:hdAll.filter(r=>!r.da_loai),
   };
 
+  // ── Vụ việc ma túy mới: vụ / đối tượng TRONG – NGOÀI địa bàn đơn vị (cùng nguồn với Bản đồ nhiệt) ──
+  let vvm=null;
+  try{
+    const dbDV=parseDonViDiaBan(CONFIG.donVi);
+    const vvAll=(data.vu_viec_moi||[]);
+    const vvKy=(from||to)?vvAll.filter(v=>_inRg(v.ngay_phat_hien,from,to)):vvAll;
+    const h=computeVuViecHotspot(data.khu_pho||[],vvKy,[],dbDV);
+    const daDongBo=(data.vu_an||[]).filter(r=>r._src_vv&&!r.da_loai).length;
+    vvm={
+      coDiaBan:!!dbDV,tongVu:vvKy.length,vuNgoai:h.vuNgoai.length,vuChuaRo:h.chuaXacDinh.length,
+      vuCoKP:h.tongVu,dtTong:h.dtTong,dtTrong:h.dtTrong,dtNgoai:h.dtNgoai,dtKhongRo:h.dtKhongRo,
+      dtChuaKP:h.dtChuaKP.length,tongVuTatCa:vvAll.length,daDongBo,
+    };
+  }catch(e){vvm=null;}
+
   return{
     from,to,
     period:(from&&to)?`Từ ngày ${fmtDate(from)} đến ngày ${fmtDate(to)}`:"Toàn bộ thời gian",
-    sd,ng,sc,pm,noiO,b4,b5,b6,tb136,pl2,pl3,hd26,
+    sd,ng,sc,pm,noiO,b4,b5,b6,tb136,pl2,pl3,hd26,vvm,
     // Tổng số đối tượng ĐANG QUẢN LÝ trong phần mềm (mỗi người tính 1 lần, kể cả
     // người thuộc nhiều diện) — dùng cho mục "Công an cấp xã quản lý, theo dõi".
     tongDangQL:dtAll.length,
@@ -4600,6 +4818,16 @@ function validateStats(S){
   if(dbSum!==S.tongDangQL)w.push(`TB136 PL1: tổng 3 cột địa bàn hoạt động (${dbSum}) khác tổng số đối tượng đang quản lý (${S.tongDangQL}).`);
   if(S.tb136.bp_suu_tra_ho_so>S.tb136.bp_suu_tra_nhom&&S.tb136.bp_suu_tra_nhom>0)
     w.push(`Sưu tra: mục "Đối tượng sưu tra" có ${S.tb136.bp_suu_tra_nhom} người, nhưng có thêm ${S.tb136.bp_suu_tra_ho_so} người ghi số hồ sơ sưu tra ở ô "Diện QL – Số hồ sơ NV" mà chưa gán vào mục Sưu tra. Báo cáo đang lấy theo mục Sưu tra.`);
+  const v=S.vvm;
+  if(v){
+    if(!v.coDiaBan&&v.tongVu>0)w.push(`Vụ việc ma túy mới: chưa nhận diện được phường/xã từ Tên đơn vị "${CONFIG.donVi}" nên không phân loại được vụ/đối tượng trong – ngoài địa bàn. Vào Cấu hình hệ thống nhập dạng "Công an phường …".`);
+    else{
+      if(v.vuChuaRo>0)w.push(`Vụ việc ma túy mới: ${v.vuChuaRo} vụ chưa xác định được khu phố/phường (ô "Nơi xảy ra vụ việc"). Xem chi tiết tại Bảng điều khiển → Bản đồ nhiệt khu phố.`);
+      if(v.dtKhongRo>0)w.push(`Vụ việc ma túy mới: ${v.dtKhongRo} đối tượng chưa xác định được thuộc phường/xã nào (địa chỉ không ghi phường/xã) nên chưa tính trong/ngoài địa bàn.`);
+      if(v.dtChuaKP>0)w.push(`Vụ việc ma túy mới: ${v.dtChuaKP} đối tượng thuộc địa bàn nhưng địa chỉ chưa ghi khu phố.`);
+    }
+    if(v.daDongBo!==v.tongVuTatCa)w.push(`Vụ việc ma túy mới có ${v.tongVuTatCa} vụ nhưng mục Vụ án/Vụ việc (PC04) mới đồng bộ ${v.daDongBo} vụ. Mở lại mục Vụ việc ma túy mới để đồng bộ.`);
+  }
   return w;
 }
 
@@ -7245,6 +7473,243 @@ function StackedBar({parts,total,max,height=16}){
   );
 }
 
+// ── Thẻ "Bản đồ nhiệt khu phố – vụ việc ma túy" trên Bảng điều khiển ──
+// Đếm VỤ VIỆC theo khu phố ghi trong địa chỉ nơi xảy ra, và ĐỐI TƯỢNG theo
+// mục "Đối tượng bị bắt trên địa bàn". Chỉ lấy khu phố thuộc phường/xã của
+// đơn vị (theo "Tên đơn vị" ở Cấu hình hệ thống).
+const KP_HEAT_STEPS=[
+  {bg:"#f8fafc",bd:"#e2e8f0",fg:"#94a3b8"},   // 0 vụ
+  {bg:"#fef9c3",bd:"#fde68a",fg:"#854d0e"},
+  {bg:"#fed7aa",bd:"#fdba74",fg:"#9a3412"},
+  {bg:"#fca5a5",bd:"#f87171",fg:"#7f1d1d"},
+  {bg:"#dc2626",bd:"#b91c1c",fg:"#fff"},      // nóng nhất
+];
+const kpHeatStep=(v,max)=>{
+  if(!v)return KP_HEAT_STEPS[0];
+  if(!max)return KP_HEAT_STEPS[1];
+  const r=v/max;
+  return KP_HEAT_STEPS[r>=.8?4:r>=.55?3:r>=.3?2:1];
+};
+// Danh sách "chip" tên đối tượng / mã vụ việc cần rà soát (rê chuột xem địa chỉ, lý do)
+function KpChips({list,max=30,fg="#9a3412",bd="#fed7aa"}){
+  const [all,setAll]=useState(false);
+  const shown=all?list:list.slice(0,max);
+  return(
+    <div style={{marginTop:5,display:"flex",flexWrap:"wrap",gap:5}}>
+      {shown.map((x,i)=>(
+        <span key={i} style={{background:"#fff",border:"1px solid "+bd,color:fg,borderRadius:20,padding:"2px 9px",fontWeight:700}}
+          title={[x.diaChi?"Địa chỉ: "+x.diaChi:(x.noi?"Nơi xảy ra: "+x.noi:""),x.ghi?"Lý do: "+x.ghi:""].filter(Boolean).join("\n")}>
+          {x.ho_ten?x.ho_ten+(x.ma?" – "+x.ma:""):x.ma}
+        </span>
+      ))}
+      {list.length>max&&
+        <button onClick={()=>setAll(v=>!v)} style={{border:"none",background:"none",cursor:"pointer",fontWeight:700,color:fg,textDecoration:"underline",fontSize:12}}>
+          {all?"Thu gọn":"… +"+(list.length-max)+" nữa"}
+        </button>}
+    </div>
+  );
+}
+function VuViecHeatmapCard({khuPho,vuViecMoi,batDiaBan}){
+  // Địa bàn lấy theo "Tên đơn vị" — đổi đơn vị ở Cấu hình hệ thống thì tính lại
+  const db=useMemo(()=>parseDonViDiaBan(CONFIG.donVi),[CONFIG.donVi]);
+  const hs=useMemo(()=>computeVuViecHotspot(khuPho,vuViecMoi,batDiaBan,db),[khuPho,vuViecMoi,batDiaBan,db]);
+  const [xem,setXem]=useState("luoi"); // luoi | bang
+  const tenDiaBan=db?db.label:"phường (xã) của đơn vị";
+  const top=hs.stats[0];
+  return(
+    <div className="card" style={{marginTop:16}}>
+      <div className="card-hd" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <h3>🔥 Bản đồ nhiệt khu phố – vụ việc ma túy</h3>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <span className="badge badge-navy">{hs.soKpCoVu}/{hs.tongKp} khu phố có vụ việc</span>
+          <span className="badge" style={{background:"#fef2f2",color:"var(--red)",border:"1px solid #fecaca"}}>📁 {hs.tongVu} vụ việc</span>
+          <span className="badge" style={{background:"#f0f6ff",color:"var(--accent)",border:"1px solid #bfdbfe"}}><span title={"Đối tượng thuộc địa bàn "+tenDiaBan+" / tổng đối tượng của tất cả vụ việc"}>👤 {hs.dtTrong}/{hs.dtTong} lượt đối tượng</span></span>
+          <div style={{display:"flex",gap:0,border:"1px solid var(--border)",borderRadius:7,overflow:"hidden"}}>
+            {[["luoi","🔥 Lưới nhiệt"],["bang","📋 Bảng"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setXem(k)} style={{border:"none",cursor:"pointer",padding:"4px 10px",fontSize:11.5,fontWeight:700,
+                background:xem===k?"var(--navy)":"#fff",color:xem===k?"#fff":"var(--muted)"}}>{l}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{padding:"16px 18px"}}>
+        {!db&&
+          <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:9,padding:"10px 13px",marginBottom:12,fontSize:12.3,color:"#92400e",lineHeight:1.6}}>
+            ⚠️ Chưa nhận diện được phường/xã từ <b>Tên đơn vị</b> hiện tại (“{CONFIG.donVi}”). Vào <b>Cấu hình hệ thống</b> nhập dạng
+            “Công an phường Tân Bình” / “Công an xã …” thì bản đồ nhiệt mới lọc đúng khu phố của địa bàn.
+          </div>}
+        {khuPho.length===0?(
+          <div style={{textAlign:"center",padding:"26px 10px",color:"var(--muted)"}}>
+            <div style={{fontSize:40,marginBottom:8,opacity:.4}}>🏘️</div>
+            <p style={{fontWeight:600,marginBottom:4}}>Chưa có danh mục Khu phố</p>
+            <p style={{fontSize:12.5}}>Vào mục <b>"Danh mục Khu phố"</b> để khai báo khu phố/ấp trước khi xem bản đồ nhiệt vụ việc.</p>
+          </div>
+        ):(hs.tongVu===0&&hs.dtTong===0&&hs.vuNgoai.length===0&&hs.chuaXacDinh.length===0)?(
+          <div style={{textAlign:"center",padding:"26px 10px",color:"var(--muted)"}}>
+            <div style={{fontSize:40,marginBottom:8,opacity:.4}}>✅</div>
+            <p style={{fontWeight:600}}>Chưa ghi nhận vụ việc ma túy tại khu phố nào thuộc {tenDiaBan}</p>
+            <p style={{fontSize:12.5,marginTop:4}}>Nhập vụ việc tại mục <b>🆕 Vụ việc ma túy mới</b> (nhớ điền <b>Nơi xảy ra vụ việc</b>) để có số liệu.</p>
+          </div>
+        ):(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+            {[
+              {lbl:"Khu phố nóng nhất",val:top?top.ten:"—",sub:top?top.soVu+" vụ · "+top.soDT+" đối tượng":"",clr:"var(--red)",ic:"🔥",small:true},
+              {lbl:"Bình quân / khu phố",val:hs.binhQuan,sub:"trên "+hs.soKpCoVu+" khu phố có vụ",clr:"var(--accent)",ic:"📈"},
+              {lbl:"Mức độ tập trung",val:hs.top3Share+"%",sub:"ở 3 khu phố dẫn đầu",clr:"var(--orange)",ic:"🎯"},
+              {lbl:"Đối tượng trên địa bàn",val:hs.dtTrong+"/"+hs.dtTong,sub:hs.tongDT+" đã gán khu phố · "+hs.dtChuaKP.length+" chưa có KP",clr:"var(--navy)",ic:"👤"},
+              {lbl:"Đối tượng ngoài địa bàn",val:hs.dtNgoai,sub:"phường/xã khác"+(hs.dtKhongRo?" · "+hs.dtKhongRo+" chưa rõ":""),clr:"var(--purple,#7c3aed)",ic:"🧭"},
+              {lbl:"Khu phố chưa có vụ",val:hs.kpSach,sub:"trên tổng "+hs.tongKp+" khu phố",clr:"var(--green)",ic:"✅"},
+              {lbl:"Vụ ngoài địa bàn",val:hs.vuNgoai.length+"/"+hs.tongVuTatCa,sub:"không thuộc "+tenDiaBan,clr:"var(--muted)",ic:"🚫"},
+            ].map((c,i)=>(
+              <div key={i} style={{background:"var(--card2)",border:"1px solid var(--border)",borderLeft:"3px solid "+c.clr,borderRadius:10,padding:"9px 12px"}}>
+                <div style={{fontSize:10.5,fontWeight:700,color:"var(--muted)",display:"flex",gap:5,alignItems:"center"}}><span>{c.ic}</span>{c.lbl}</div>
+                <div style={{fontSize:c.small?15:22,fontWeight:800,color:c.clr,lineHeight:1.25,marginTop:2,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={String(c.val)}>{c.val}</div>
+                <div style={{fontSize:10.5,color:"var(--muted2)"}}>{c.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {xem==="luoi"?(
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:9}}>
+              <div style={{fontSize:12.5,fontWeight:800,color:"var(--navy)"}}>🔥 Lưới nhiệt {hs.tongKp} khu phố – {tenDiaBan}</div>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10.5,color:"var(--muted)",fontWeight:600}}>
+                <span>Ít vụ</span>
+                {KP_HEAT_STEPS.map((c,i)=><span key={i} style={{width:20,height:12,borderRadius:3,background:c.bg,border:"1px solid "+c.bd}}/>)}
+                <span>Nhiều vụ</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(112px,1fr))",gap:8}}>
+              {hs.stats.slice().sort((a,b)=>{
+                const na=parseInt((a.ten.match(/\d+/)||[])[0],10),nb=parseInt((b.ten.match(/\d+/)||[])[0],10);
+                if(!isNaN(na)&&!isNaN(nb))return na-nb;
+                return a.ten.localeCompare(b.ten,"vi");
+              }).map(s=>{
+                const c=kpHeatStep(s.soVu,hs.maxVu);
+                return(
+                  <div key={s.id} title={s.soVu?`${s.ten}\n${s.soVu} vụ việc · ${s.soDT} lượt đối tượng (${s.soNguoi} người)\nMã vụ: ${s.vuList.map(v=>v.ma).join(", ")}`:`${s.ten}\nChưa ghi nhận vụ việc`}
+                    style={{background:c.bg,border:"1.5px solid "+c.bd,borderRadius:9,padding:"9px 8px",textAlign:"center",cursor:"default"}}>
+                    <div style={{fontSize:10.5,fontWeight:700,color:c.fg,opacity:.9,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.ten}</div>
+                    <div style={{fontSize:21,fontWeight:800,color:c.fg,lineHeight:1.15}}>{s.soVu}</div>
+                    <div style={{fontSize:10,fontWeight:600,color:c.fg,opacity:.85}}>{s.soVu?"vụ · 👤 "+s.soDT:"chưa có vụ"}</div>
+                  </div>
+                );
+              })}
+              {(hs.vuNgoai.length>0||hs.dtNgoai>0)&&
+                <div title={hs.ngoaiTheoPhuong.map(x=>x.ten+": "+x.vu+" vụ, "+x.dt+" đối tượng").join("\n")}
+                  style={{background:"#f5f3ff",border:"1.5px dashed #c4b5fd",borderRadius:9,padding:"9px 8px",textAlign:"center",cursor:"default"}}>
+                  <div style={{fontSize:10.5,fontWeight:700,color:"#6d28d9"}}>Ngoài địa bàn</div>
+                  <div style={{fontSize:21,fontWeight:800,color:"#6d28d9",lineHeight:1.15}}>{hs.vuNgoai.length}</div>
+                  <div style={{fontSize:10,fontWeight:600,color:"#6d28d9",opacity:.85}}>vụ · 👤 {hs.dtNgoai}</div>
+                </div>}
+              {(hs.chuaXacDinh.length>0||hs.dtChuaKP.length>0||hs.dtKhongRo>0)&&
+                <div style={{background:"#fff7ed",border:"1.5px dashed #fdba74",borderRadius:9,padding:"9px 8px",textAlign:"center",cursor:"default"}}
+                  title="Chưa xác định được khu phố – xem danh sách cảnh báo bên dưới để bổ sung địa chỉ">
+                  <div style={{fontSize:10.5,fontWeight:700,color:"#9a3412"}}>Chưa xác định KP</div>
+                  <div style={{fontSize:21,fontWeight:800,color:"#9a3412",lineHeight:1.15}}>{hs.chuaXacDinh.length}</div>
+                  <div style={{fontSize:10,fontWeight:600,color:"#9a3412",opacity:.85}}>vụ · 👤 {hs.dtChuaKP.length+hs.dtKhongRo}</div>
+                </div>}
+            </div>
+            {hs.ngoaiTheoPhuong.length>0&&
+              <div style={{marginTop:10,background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:8,padding:"8px 12px",fontSize:12,lineHeight:1.65,color:"#5b21b6"}}>
+                🧭 <b>Ngoài địa bàn {tenDiaBan}</b>: {hs.ngoaiTheoPhuong.map(x=>x.ten+" ("+x.vu+" vụ · 👤 "+x.dt+")").join("; ")}.
+              </div>}
+          </>
+          ):(
+          <>
+            <div style={{fontSize:12.5,fontWeight:800,color:"var(--navy)",marginBottom:8}}>📋 Chi tiết vụ việc từng khu phố</div>
+            <div className="tbl-wrap" style={{maxHeight:420,overflowY:"auto"}}>
+              <table>
+                <thead><tr>
+                  <th style={{width:46}}>#</th>
+                  <th style={{minWidth:150}}>Khu phố</th>
+                  <th style={{width:84,textAlign:"center"}}>Số vụ</th>
+                  <th style={{minWidth:150}}>Mức độ</th>
+                  <th style={{width:96,textAlign:"center"}} title="Lượt đối tượng bị bắt trên địa bàn">👤 Lượt ĐT</th>
+                  <th style={{width:92,textAlign:"center"}} title="Số người không trùng">Người</th>
+                  <th style={{minWidth:180}}>Mã vụ việc</th>
+                </tr></thead>
+                <tbody>
+                  {hs.stats.map((s,i)=>(
+                    <tr key={s.id} style={s.soVu===0?{opacity:.55}:null}>
+                      <td style={{textAlign:"center",fontWeight:700,color:i<3&&s.soVu>0?"var(--red)":"var(--muted)"}}>
+                        {s.soVu>0?(["🥇","🥈","🥉"][i]||(i+1)):"–"}
+                      </td>
+                      <td style={{fontWeight:600,color:"var(--navy)"}}>{s.ten}</td>
+                      <td style={{textAlign:"center"}}>
+                        <span style={{fontSize:15,fontWeight:800,color:s.soVu===0?"var(--muted2)":(i===0?"var(--red)":"var(--navy)")}}>{s.soVu}</span>
+                        <div style={{fontSize:10,color:"var(--muted2)"}}>{pct(s.soVu,hs.tongVu)}%</div>
+                      </td>
+                      <td>
+                        <div style={{background:"#eef2f7",borderRadius:8,height:12,width:"100%",overflow:"hidden"}}>
+                          <div style={{height:"100%",width:(hs.maxVu?Math.max(3,Math.round(s.soVu/hs.maxVu*100)):0)+"%",
+                            background:kpHeatStep(s.soVu,hs.maxVu).bd,borderRadius:8}}/>
+                        </div>
+                      </td>
+                      <td style={{textAlign:"center",fontWeight:700,color:s.soDT?"var(--accent)":"#cbd5e1"}}>{s.soDT}</td>
+                      <td style={{textAlign:"center",fontWeight:600,color:s.soNguoi?"var(--navy)":"#cbd5e1"}}>{s.soNguoi}</td>
+                      <td style={{fontSize:11,color:"var(--muted)"}}>
+                        {s.soVu===0?"–":<span title={s.vuList.map(v=>v.ma+(v.ngay?" ("+fmtDate(v.ngay)+")":"")).join("\n")}>
+                          {s.vuList.slice(0,4).map(v=>v.ma).join(", ")}{s.vuList.length>4?` … +${s.vuList.length-4}`:""}
+                        </span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {hs.ngoaiTheoPhuong.map(x=>(
+                    <tr key={"ng-"+x.ten} style={{background:"#faf5ff"}}>
+                      <td style={{textAlign:"center",color:"var(--muted)"}}>🧭</td>
+                      <td style={{fontWeight:600,color:"#6d28d9"}}>{x.ten} <span style={{fontSize:10,fontWeight:600}}>(ngoài địa bàn)</span></td>
+                      <td style={{textAlign:"center",fontWeight:800,color:"#6d28d9"}}>{x.vu}</td>
+                      <td/>
+                      <td style={{textAlign:"center",fontWeight:700,color:"#6d28d9"}}>{x.dt}</td>
+                      <td style={{textAlign:"center",color:"#cbd5e1"}}>–</td>
+                      <td style={{fontSize:11,color:"var(--muted)"}}>–</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+          )}
+
+          {(hs.chuaXacDinh.length>0||hs.ngoaiDanhMuc.length>0||hs.dtChuaKP.length>0||hs.dtKhongRo>0)&&
+            <div style={{marginTop:11,background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8,padding:"9px 12px",fontSize:12,lineHeight:1.65,color:"#9a3412"}}>
+              {hs.chuaXacDinh.length>0&&
+                <div>⚠️ <b>{hs.chuaXacDinh.length}</b> vụ việc chưa xác định được khu phố (ô <b>Nơi xảy ra vụ việc</b> chưa ghi khu phố / phường, hoặc khu phố chưa có trong danh mục). Chưa tính vào các ô khu phố. Rê chuột lên mã vụ để xem lý do.
+                  <KpChips list={hs.chuaXacDinh.map(x=>({ma:x.ma,noi:x.noi,ghi:x.ghi}))} max={25}/>
+                </div>}
+              {hs.ngoaiDanhMuc.length>0&&
+                <div style={{marginTop:hs.chuaXacDinh.length?7:0}}>
+                  🏘️ Địa chỉ có nhắc tới khu phố thuộc {tenDiaBan} nhưng <b>chưa có trong Danh mục Khu phố</b>:{" "}
+                  {hs.ngoaiDanhMuc.map(x=>"khu phố "+x.so+" ("+x.n+")").join(", ")}. Nên bổ sung vào danh mục để thống kê đủ.
+                </div>}
+              {hs.dtChuaKP.length>0&&
+                <div style={{marginTop:(hs.chuaXacDinh.length||hs.ngoaiDanhMuc.length)?7:0}}>
+                  👤 <b>{hs.dtChuaKP.length}</b> lượt đối tượng bị bắt trên địa bàn chưa xác định được khu phố (địa chỉ không ghi khu phố). Cần bổ sung địa chỉ cho:
+                  <KpChips list={hs.dtChuaKP} max={30}/>
+                </div>}
+              {hs.dtKhongRo>0&&
+                <div style={{marginTop:7}}>
+                  ❓ <b>{hs.dtKhongRo}</b> lượt đối tượng chưa xác định được thuộc phường/xã nào (địa chỉ không ghi phường/xã) nên chưa phân loại được trong/ngoài địa bàn:
+                  <KpChips list={hs.dtKhongRoList} max={30}/>
+                </div>}
+            </div>}
+        </>
+        )}
+      </div>
+      <div style={{padding:"0 18px 16px",fontSize:11,color:"var(--muted)",lineHeight:1.6}}>
+        💡 <b>Vụ việc</b> đếm từ mục <b>🆕 Vụ việc ma túy mới</b>, lấy khu phố ghi trong <b>Nơi xảy ra vụ việc</b> (thiếu thì tự dò trong <b>Nội dung vụ việc</b>
+        {hs.theoNoiDung>0?<span> – hiện có <b>{hs.theoNoiDung}</b> vụ dò theo nội dung</span>:null}).
+        <b> Đối tượng</b> đếm trực tiếp từ danh sách đối tượng của mọi vụ việc: <b>{hs.dtTrong}/{hs.dtTong}</b> là số đối tượng có địa chỉ thuộc {tenDiaBan} trên tổng số đối tượng; phần còn lại là đối tượng ngoài địa bàn (phường/xã khác). Khu phố lấy theo Nơi ở hiện tại / Tạm trú / Thường trú. <b>Vụ ngoài địa bàn</b> là vụ xảy ra ở phường/xã khác {tenDiaBan}.
+        Chỉ tính khu phố mà <b>phía sau là {tenDiaBan}</b> — khu phố của phường/xã khác (VD “khu phố 4, phường Bình Trị Đông”) không được tính.
+        Địa bàn lấy theo <b>Tên đơn vị</b> tại Cấu hình hệ thống, đổi đơn vị thì bản đồ tự đổi theo.
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({data}){
   const dt=data.doi_tuong||[];
   const sd=(data.su_dung||dt.filter(r=>(r.nhom||[]).includes("su_dung"))).filter(r=>!r.da_loai);
@@ -7496,6 +7961,9 @@ function Dashboard({data}){
           Cột "Đã loại" thống kê lũy kế đối tượng đã thanh loại thuộc khu phố đó.
         </div>
       </div>
+
+      {/* ══════════════ BẢN ĐỒ NHIỆT VỤ VIỆC THEO KHU PHỐ ══════════════ */}
+      <VuViecHeatmapCard khuPho={khuPho} vuViecMoi={data.vu_viec_moi||[]} batDiaBan={data.bat_dia_ban||[]}/>
     </div>
   );
 }
@@ -7555,6 +8023,10 @@ function LogicCheckBox({data,dr}){
           cell("Vụ án MT",S.b5.ma_tuy.vu),cell("Vụ hình sự khác",S.b5.gn.vu+S.b5.cy.vu+S.b5.cuop.vu+S.b5.trom.vu+S.b5.gr.vu),
           cell("Điều 256a (vụ/ĐT)",S.b6.so_vu+"/"+S.b6.so_dt),
           cell("HD26 – ĐT bán hiện còn",S.hd26.dt_ban_hien_con),cell("HD26 – Điểm hiện còn",S.hd26.diem_tc_hien_con)])}
+        {S.vvm&&grp("Vụ việc ma túy mới (theo kỳ báo cáo) · trong – ngoài địa bàn",[
+          cell("Tổng vụ việc",S.vvm.tongVu),cell("Vụ ngoài địa bàn",S.vvm.vuNgoai),
+          cell("Đối tượng trên địa bàn / tổng",S.vvm.dtTrong+"/"+S.vvm.dtTong),
+          cell("Đối tượng ngoài địa bàn",S.vvm.dtNgoai),cell("ĐT chưa rõ phường/xã",S.vvm.dtKhongRo)])}
         <div style={{fontSize:11,color:"#64748b",lineHeight:1.6,marginTop:6,borderTop:"1px dashed #cbd5e1",paddingTop:6}}>
           💡 Các ô nhập bên dưới chỉ dùng để <b>ghi đè</b> khi số liệu thực tế khác số tự tính. Ô để trống → biểu mẫu lấy số tự tính ở trên.
         </div>
@@ -12588,7 +13060,6 @@ const NV_AUTOFILL_LABELS=[
   [/ngày\s*phát\s*hiện/i,"case","ngay_phat_hien"],
   [/nội\s*dung\s*vụ\s*việc/i,"case","noi_dung_vu_viec"],
   [/đơn\s*vị\s*bắt.{0,3}mời|đơn\s*vị\s*bắt|đơn\s*vị\s*mời/i,"case","don_vi_bat_moi"],
-  [/ngày\s*bắt.{0,3}mời|ngày\s*bắt|ngày\s*mời/i,"case","ngay_bat_moi"],
   [/kết\s*quả\s*xử\s*lý\s*vụ\s*việc|kết\s*quả\s*xử\s*lý(?!\s*đối\s*tượng)/i,"case","ket_qua_xu_ly"],
   [/đtv\s*thụ\s*lý\s*chính|điều\s*tra\s*viên\s*thụ\s*lý/i,"case","dtv_thu_ly_chinh"],
   [/cán\s*bộ\s*làm\s*trực\s*tiếp/i,"case","can_bo_lam_truc_tiep"],
@@ -12625,7 +13096,7 @@ function autofillFromDocxText(text){
     if(!val)return;
     for(const[re,target,key]of NV_AUTOFILL_LABELS){
       if(re.test(label)&&!out[target][key]){
-        if(["ngay_phat_hien","ngay_bat_moi","nam_sinh","ngay_cap","ngay_moi_lam_viec","ngay_chuyen","ngay_dua_di_cai"].includes(key)){
+        if(["ngay_phat_hien","nam_sinh","ngay_cap","ngay_moi_lam_viec","ngay_chuyen","ngay_dua_di_cai"].includes(key)){
           const iso=parseExcelDateG(val);
           out[target][key]=iso||"";
         }else out[target][key]=val;
@@ -12768,6 +13239,40 @@ function NghiepVuSubjectBlock({rec,idx,onChange,onRemove,canRemove,collapsed,onT
 }
 
 const emptyNvSubject=()=>{const o={_id:uid()};F_NV_DOITUONG.forEach(f=>{o[f.k]=f.def||"";o[f.k+"_other"]="";});return o;};
+const emptyNvMaTuy=()=>{const o={_id:uid()};F_NV_MATUY.forEach(f=>{o[f.k]=f.def||"";o[f.k+"_other"]="";});return o;};
+// Tên đối tượng gắn với 1 dòng ma túy thu giữ (ưu tiên tra theo _id để đổi tên vẫn đúng)
+const nvMaTuyTenDT=(m,subs)=>{
+  const hit=(subs||[]).find(s=>s._id&&s._id===m.dt_id);
+  return hit?(hit.ho_ten||"(chưa có tên)"):(m.ho_ten_snapshot||"");
+};
+// "7,5519" (dấu phẩy thập phân kiểu VN) → 7.5519 để cộng dồn
+const nvKLNum=v=>{
+  const s=String(v==null?"":v).replace(/\s/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",",".");
+  const n=parseFloat(s.replace(/[^0-9.\-]/g,""));
+  return isNaN(n)?0:n;
+};
+const nvKLText=n=>{
+  if(!n)return"";
+  const s=(Math.round(n*10000)/10000).toString();
+  return s.replace(".",",");
+};
+// Gộp danh sách ma túy thu giữ theo LOẠI: [{loai, tong, don_vi, chiTiet:[…]}]
+function nvGomMaTuyTheoLoai(list){
+  const out=[];
+  (list||[]).forEach(m=>{
+    const loai=dv(m,"loai_ma_tuy")||"(chưa rõ loại)";
+    const dvt=m.don_vi_tinh||"gam";
+    let g=out.find(x=>x.loai===loai&&x.don_vi===dvt);
+    if(!g){g={loai,don_vi:dvt,tong:0,chiTiet:[]};out.push(g);}
+    g.tong+=nvKLNum(m.khoi_luong);
+    if(String(m.khoi_luong||"").trim())g.chiTiet.push(String(m.khoi_luong).trim());
+  });
+  return out;
+}
+// Mô tả ngắn gọn toàn bộ ma túy thu giữ của 1 vụ việc — dùng cho bảng & báo cáo
+function nvMoTaMaTuy(list){
+  return nvGomMaTuyTheoLoai(list).map(g=>`${g.loai}: ${nvKLText(g.tong)||"—"} ${g.don_vi}`).join("; ");
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // TỰ ĐỘNG CHUYỂN DỮ LIỆU TỪ "VỤ VIỆC MA TÚY MỚI" SANG 2 MỤC:
@@ -12852,10 +13357,46 @@ function _nvToiDanhFromLoai(loai){
   return m?("Điều "+m[1]+" BLHS"):"";
 }
 
+// Quy đổi "Loại ma túy thu giữ" sang đúng cột tang vật của PL VỤ (PC04).
+// Trả về tên trường; thể lỏng (ml) luôn dồn vào cột "Ma túy khác – Thể lỏng".
+function _nvColTangVat(loai,donVi){
+  const n=stripDiacriticsVN(String(loai||"")).toLowerCase();
+  if(String(donVi||"gam")==="ml")return"tv_mt_khac_long";
+  if(/heroin/.test(n))return"tv_heroin";
+  if(/met|da\b|methamphetamine|ma tuy da/.test(n))return"tv_meth_g";
+  if(/amphetamine/.test(n)&&!/meth/.test(n))return"tv_amphet_g";
+  if(/mdma|thuoc lac|extasy|ecstasy/.test(n))return"tv_mdma_g";
+  if(/ketamine|\bket\b/.test(n))return"tv_ketamine_g";
+  if(/co my|can sa tong hop/.test(n))return"tv_co_my_g";
+  if(/can sa|thc|ma tuy co|bo da|weed/.test(n))return"tv_can_sa";
+  if(/cocaine|cocain/.test(n))return"tv_cocaine";
+  if(/thuoc phien|opium/.test(n))return"tv_thuoc_phien";
+  if(/hon hop/.test(n))return"tv_honhop_g";
+  if(/vien|pill/.test(n))return"tv_thth_vien";
+  if(/cay/.test(n))return"tv_cay_co_chat";
+  return"tv_mt_khac_ran";
+}
+// Cộng dồn "Số ma túy thu giữ được" của vụ việc vào các cột tang vật PL VỤ
+function _nvTangVatFromMaTuy(list){
+  const sum={};
+  (list||[]).forEach(m=>{
+    const kl=nvKLNum(m.khoi_luong);
+    if(!kl)return;
+    let dvt=m.don_vi_tinh||"gam",v=kl;
+    if(dvt==="kg"){v=kl*1000;dvt="gam";}
+    const col=_nvColTangVat(dv(m,"loai_ma_tuy"),dvt);
+    sum[col]=(sum[col]||0)+v;
+  });
+  const out={};
+  Object.keys(sum).forEach(k=>{out[k]=nvKLText(sum[k]);});
+  return out;
+}
 // Các trường của PL VỤ được TỰ ĐỘNG điền từ 1 bản ghi Vụ việc ma túy mới
 function buildVuAnAuto(vv,db){
   const subs=(vv.doi_tuong||[]);
   return{
+    ..._nvTangVatFromMaTuy(vv.ma_tuy_thu),
+    cong_nghe_cao:vv.mua_ban_kgm==="Có",
     tinh_trang_vu:"Phát hiện mới",
     ma_vu_an:vv.ma_vu_viec||"",
     don_vi_bc:CONFIG.donVi,
@@ -12863,7 +13404,7 @@ function buildVuAnAuto(vv,db){
     don_vi_ph_bt:_nvMapDonViPH(vv.don_vi_bat_moi),
     trich_yeu_nd:vv.noi_dung_vu_viec||dv(vv,"loai_vu_viec")||"",
     ngay_ph_bt:vv.ngay_phat_hien||"",
-    dia_ban_ph:db?db.label:"",
+    dia_ban_ph:(()=>{const t=db?vuTrangThaiDiaBan(vv,db):null;return t&&t.loai==="ngoai"?t.phuong:(db?db.label:"");})(),
     so_doi_tuong:String(subs.length),
     toi_danh_chinh:_nvToiDanhFromLoai(dv(vv,"loai_vu_viec")),
     phong_thu_ly:"PC04",
@@ -12919,11 +13460,845 @@ function syncVuViecMoiTo(vuViecList,vuAnList,batList){
 }
 
 
+
+// ══════════════════════════════════════════════════════════════════════
+// NHẬP "VỤ VIỆC MA TÚY MỚI" TỪ FILE EXCEL TỔNG HỢP (bảng theo dõi tin báo)
+// Bóc tách theo TIÊU ĐỀ CỘT (không phụ thuộc thứ tự cột), quy ước:
+//   Mã vụ việc           = "MT" + ddmmyy của cột "Ngày tiếp nhận" (VD: MT090926)
+//   Loại vụ việc         ← cột "Tội danh"  (khớp về đúng Điều BLHS tương ứng)
+//   Ngày phát hiện       ← cột "Ngày tiếp nhận"
+//   Nội dung vụ việc     ← cột "Nội dung tố giác" (hoặc "Nội dung vụ việc")
+//   Đơn vị bắt/mời       ← cột "Tên cá nhân, cơ quan, tổ chức cung cấp"
+//                          (viết tắt CAP / Tuần tra CAP / PC04… được viết đầy đủ)
+//   Kết quả xử lý        ← cột "Kết quả giải quyết"
+//   Cán bộ làm trực tiếp ← cột "CBTH"
+//   Đối tượng (nhiều người) ← cột "Đối tượng", tách theo "1/ 1. 2/ 2. …"
+// Sau khi nhập, dữ liệu tự chuyển tiếp sang "PL VỤ (PC04)" và chỉ những đối
+// tượng thuộc phường/xã của đơn vị mới vào "Đối tượng bị bắt trên địa bàn"
+// (dùng lại đúng cơ chế syncVuViecMoiTo ở trên).
+// ══════════════════════════════════════════════════════════════════════
+const _ivNorm=s=>stripDiacriticsVN(String(s||"")).toLowerCase().replace(/[.,;:()\[\]\-\/\\|"'”“]/g," ").replace(/\s+/g," ").trim();
+const _ivTxt=v=>{
+  if(v==null)return"";
+  if(v instanceof Date)return _ivDateISO(v)||"";
+  return String(v).replace(/ /g," ").replace(/\r/g,"").replace(/[ \t]+/g," ").trim();
+};
+// Ngày: LƯU Ý dùng giờ ĐỊA PHƯƠNG (getFullYear/getMonth/getDate) — không dùng
+// toISOString() vì múi giờ VN (+07) sẽ làm lệch 1 ngày.
+function _ivDateISO(d){
+  if(!(d instanceof Date)||isNaN(d.getTime()))return"";
+  return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function ivParseDate(v){
+  if(v==null||v==="")return"";
+  if(v instanceof Date)return _ivDateISO(v);
+  const s=String(v).replace(/ /g," ").trim();
+  // dd/mm/yyyy — chấp nhận dấu phân cách lặp ("23/12//2025") và 1 chữ số
+  let m=s.match(/(\d{1,2})\s*[\/\-.]+\s*(\d{1,2})\s*[\/\-.]+\s*(\d{2,4})/);
+  if(m){
+    const y=m[3].length===2?"20"+m[3]:m[3],dd=+m[1],mm=+m[2];
+    if(dd>=1&&dd<=31&&mm>=1&&mm<=12&&+y>=1900&&+y<=2100)return`${y}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    return"";
+  }
+  m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return`${m[1]}-${String(+m[2]).padStart(2,"0")}-${String(+m[3]).padStart(2,"0")}`;
+  m=s.match(/ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})/i);
+  if(m)return`${m[3]}-${String(+m[2]).padStart(2,"0")}-${String(+m[1]).padStart(2,"0")}`;
+  if(/^\d+$/.test(s)&&Number(s)>1000)return _ivDateISO(new Date(Math.round((Number(s)-25569)*86400000)));
+  return"";
+}
+// Đảo ngày ↔ tháng (khi Excel lưu sai kiểu m/d/y)
+function ivSwapDM(iso){
+  const m=String(iso||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m||+m[3]>12||+m[2]===+m[3])return"";
+  return`${m[1]}-${m[3]}-${m[2]}`;
+}
+// Ngày xảy ra ghi trong nội dung — chỉ nhận ngày đứng sau "ngày/lúc/hồi/vào/khoảng"
+// và bỏ qua ngày sinh / ngày cấp, để dùng đối chiếu với "Ngày tiếp nhận".
+function ivFirstDateInText(txt){
+  const s=String(txt||"");
+  let m=s.match(/ngày\s*(\d{1,2})\s*tháng\s*(\d{1,2})\s*năm\s*(\d{4})/i);
+  if(m)return`${m[3]}-${String(+m[2]).padStart(2,"0")}-${String(+m[1]).padStart(2,"0")}`;
+  const g=/(\d{1,2})\s*[\/\-.]+\s*(\d{1,2})\s*[\/\-.]+\s*(20\d{2})/g;
+  while((m=g.exec(s))!==null){
+    const before=s.slice(Math.max(0,m.index-22),m.index);
+    if(/(?:SN|sinh|năm\s*sinh|cấp)\s*[:.]?\s*$/i.test(before))continue;
+    if(!/(?:ngày|lúc|hồi|vào|khoảng)\b[^a-zà-ỹ]*$/i.test(before))continue;
+    if(+m[1]<=31&&+m[2]<=12)return`${m[3]}-${String(+m[2]).padStart(2,"0")}-${String(+m[1]).padStart(2,"0")}`;
+  }
+  return"";
+}
+// Chỉ cảnh báo lệch ngày khi LỆCH NĂM hoặc đúng bằng ngày bị ĐẢO ngày↔tháng,
+// tránh báo nhầm trường hợp ngày xảy ra và ngày tiếp nhận vốn khác nhau.
+function ivDateSuspect(iso,isoContent){
+  if(!iso||!isoContent||iso===isoContent)return"";
+  if(iso.slice(0,4)!==isoContent.slice(0,4))return"year";
+  if(ivSwapDM(iso)===isoContent)return"swap";
+  return"";
+}
+// ── Mã vụ việc: "MT" + ddmmyy (09/09/2026 → MT090926) ──
+function ivMaVuViec(iso){
+  const m=String(iso||"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m?("MT"+m[3]+m[2]+m[1].slice(2)):"";
+}
+function ivUniqueCode(base,used){
+  if(!base)return"";
+  let c=base,k=2;
+  while(used.has(c.toUpperCase()))c=base+"-"+(k++);
+  used.add(c.toUpperCase());
+  return c;
+}
+
+// ── "Tội danh" (Excel) → đúng 1 Điều trong OPT_LOAI_VU_VIEC ──
+// So khớp phần "Tội …": ưu tiên khớp tuyệt đối, sau đó khớp chứa cụm và lấy
+// cụm DÀI NHẤT, để "tổ chức sử dụng" không bị nhận thành "sử dụng" và ngược lại.
+const _IV_TOI_OPTS=OPT_LOAI_VU_VIEC.map(o=>({full:o,key:_ivNorm(String(o).replace(/^Điều\s*[0-9]+[a-zA-Z]?\.\s*Tội\s*/i,""))}));
+function ivMapLoaiVuViec(raw){
+  const t=_ivTxt(raw);
+  if(!t)return{loai_vu_viec:"",loai_vu_viec_other:"",ok:true};
+  const dm=t.match(/Điều\s*([0-9]{3}[a-zA-Z]?)/i);
+  if(dm){
+    const hit=OPT_LOAI_VU_VIEC.find(o=>new RegExp("^Điều\\s*"+dm[1]+"\\.","i").test(o));
+    if(hit)return{loai_vu_viec:hit,loai_vu_viec_other:"",ok:true};
+  }
+  const n=_ivNorm(t).replace(/^toi\s+/,"");
+  const exact=_IV_TOI_OPTS.find(o=>o.key===n);
+  if(exact)return{loai_vu_viec:exact.full,loai_vu_viec_other:"",ok:true};
+  const cands=_IV_TOI_OPTS.filter(o=>n.includes(o.key)||o.key.includes(n));
+  if(cands.length){
+    cands.sort((a,b)=>b.key.length-a.key.length);
+    return{loai_vu_viec:cands[0].full,loai_vu_viec_other:"",ok:true};
+  }
+  return{loai_vu_viec:"Khác",loai_vu_viec_other:t,ok:false};
+}
+
+// ── "Tên cá nhân, cơ quan, tổ chức cung cấp" → "Đơn vị bắt/mời" ghi đầy đủ ──
+// "CAP Tân Bình trực tiếp phát hiện" / "Tuần tra CAP" / "363 CAP" → "Công an phường Tân Bình"
+const _IV_UNIT_ABBR=[
+  [/\bCAP\b/i,"Công an phường"],[/\bCAX\b/i,"Công an xã"],[/\bCATT\b/i,"Công an thị trấn"],
+  [/\bCAĐK\b/i,"Công an đặc khu"],[/\bCAQ\b/i,"Công an quận"],[/\bCAH\b/i,"Công an huyện"],
+  [/\bCATP\b|\bCA\s*TP\b/i,"Công an Thành phố"],[/\bCA\s*tỉnh\b/i,"Công an tỉnh"],
+];
+const _IV_UNIT_FIXED=[
+  [/\bPC0?4\b/i,"Phòng Cảnh sát điều tra tội phạm về ma túy (PC04)"],
+  [/\bC0?4\b/i,"Cục Cảnh sát điều tra tội phạm về ma túy (C04)"],
+  [/\bPC0?2\b/i,"Phòng Cảnh sát hình sự (PC02)"],
+  [/\bPC0?6\b/i,"Phòng Cảnh sát QLHC về TTXH (PC06)"],
+  [/\bPC0?8\b/i,"Phòng Cảnh sát môi trường (PC08)"],
+  [/\bCSGT\b/i,"Cảnh sát giao thông"],[/\bCSCĐ\b/i,"Cảnh sát cơ động"],[/\bCSHS\b/i,"Cảnh sát hình sự"],
+  [/\bBĐBP\b|bộ\s*đội\s*biên\s*phòng/i,"Bộ đội Biên phòng"],
+  [/cảnh\s*sát\s*biển/i,"Cảnh sát biển"],[/hải\s*quan/i,"Hải quan"],
+  [/\bVKS\b|viện\s*kiểm\s*sát/i,"Viện kiểm sát nhân dân"],
+  [/\bTAND\b|tòa\s*án\s*nhân\s*dân/i,"Tòa án nhân dân"],
+  [/quần\s*chúng|người\s*dân|nhân\s*dân\s*(cung\s*cấp|tố\s*giác|báo)/i,"Quần chúng nhân dân"],
+  [/tự\s*(trình\s*báo|thú|giác|khai)|đầu\s*thú|đơn\s*trình\s*báo/i,"Đối tượng tự trình báo"],
+];
+const _IV_ACTION_RE=/\s*(?:trực\s*tiếp\s*)?(?:kiểm\s*tra\s*hành\s*chính|kiểm\s*tra|tuần\s*tra(?:\s*kiểm\s*soát)?|gọi\s*hỏi(?:\s*răn\s*đe|\s*răng\s*đe)?|phát\s*hiện|bắt\s*(?:quả\s*tang|giữ)?|mời\s*làm\s*việc|làm\s*việc|chuyển\s*(?:giao|đến|hồ\s*sơ)?|giao|cung\s*cấp|báo\s*tin|tố\s*giác|phối\s*hợp|trực\s*tiếp)\b.*$/i;
+const _IV_NAME_STOP=new Set(["truc","kiem","tuan","goi","phat","bat","moi","lam","chuyen","giao","cung","bao","to","phoi","va","voi","phuong","xa","cong","an","doi","so"]);
+// Tên phường/xã đứng sau chữ viết tắt: các từ viết hoa (hoặc số) liền nhau
+function _ivUnitName(after){
+  const toks=String(after||"").replace(/^[\s.:,-]+/,"").split(/\s+/),out=[];
+  for(const t0 of toks){
+    const t=t0.replace(/[,.;:)]+$/,"");
+    if(!t||out.length>=4)break;
+    if(/^\d{1,3}$/.test(t)){out.push(t);continue;}
+    if(!/^[A-ZĐÀ-Ỹ]/.test(t))break;
+    if(_IV_NAME_STOP.has(stripDiacriticsVN(t).toLowerCase()))break;
+    out.push(t);
+  }
+  return out.join(" ").trim();
+}
+function ivMapDonVi(raw){
+  const s=_ivTxt(raw).replace(/\s+/g," ").trim();
+  if(!s)return{don_vi_bat_moi:CONFIG.donVi,ok:true};
+  // (1) đã ghi đầy đủ "Công an phường/xã/… <Tên>"
+  let m=s.match(/công\s*an\s*(phường|xã|thị\s*trấn|đặc\s*khu)\s*([^,.;(]*)/i);
+  if(m){
+    const type=m[1].replace(/\s+/g," ").toLowerCase(),nm=_ivUnitName(m[2]);
+    return{don_vi_bat_moi:nm?("Công an "+type+" "+nm):CONFIG.donVi,ok:true};
+  }
+  // (2) viết tắt CAP / CAX / CAQ… — không có tên theo sau thì hiểu là đơn vị mình
+  for(const[re,full]of _IV_UNIT_ABBR){
+    const mm=s.match(re);
+    if(!mm)continue;
+    const nm=_ivUnitName(s.slice(mm.index+mm[0].length));
+    return{don_vi_bat_moi:nm?(full+" "+nm):CONFIG.donVi,ok:true};
+  }
+  // (3) đơn vị / nguồn tin cố định
+  for(const[re,full]of _IV_UNIT_FIXED)if(re.test(s))return{don_vi_bat_moi:full,ok:true};
+  // (4) chỉ ghi "… 363 phường Tân Bình", "Tổ tuần tra phường X" → Công an phường X
+  m=s.match(/(?:^|\s)(phường|p\.|xã|x\.|thị\s*trấn|tt\.|đặc\s*khu)\s*([^,.;(]*)/i);
+  if(m){
+    const t0=stripDiacriticsVN(m[1]).toLowerCase();
+    const type=t0.indexOf("p")===0?"phường":t0.indexOf("x")===0?"xã":(t0.indexOf("tt")===0||t0.indexOf("thi")===0)?"thị trấn":"đặc khu";
+    const nm=_ivUnitName(m[2]);
+    if(nm)return{don_vi_bat_moi:"Công an "+type+" "+nm,ok:true};
+  }
+  // (5) chỉ ghi hành động ("gọi hỏi răn đe", "tuần tra") → đơn vị mình thực hiện
+  if(!s.replace(_IV_ACTION_RE,"").replace(/[\s,.;:0-9-]+/g,""))return{don_vi_bat_moi:CONFIG.donVi,ok:true};
+  // (6) không nhận diện được: cắt phần mô tả hành động / phần trong ngoặc
+  let out=s.split("(")[0].replace(_IV_ACTION_RE,"").replace(/[\s,.;:-]+$/,"").trim();
+  if(!out)out=s.replace(_IV_ACTION_RE,"").trim()||s;
+  return{don_vi_bat_moi:out,ok:false,raw:s};
+}
+// "HUỲNH TRUNG HẬU" → "Huỳnh Trung Hậu" (giữ nguyên nếu đã viết đúng hoa/thường)
+function ivTitleCaseName(s){
+  const t=_ivTxt(s);
+  if(!t||t!==t.toUpperCase())return t;
+  return t.toLowerCase().split(/(\s+|,\s*)/).map(w=>/^[a-zà-ỹđ]/.test(w)?w.charAt(0).toUpperCase()+w.slice(1):w).join("");
+}
+
+// ── Tách cột "Đối tượng" thành danh sách đối tượng ──
+const _IV_ADDR_LABELS=[
+  [/(?:HKTT|KHTT|ĐKTT|nơi\s*thường\s*trú|thường\s*trú)\s*(?:và|&|\/|,)\s*(?:n[ơo]i\s*ở(?:\s*hiện\s*tại|\s*hiện\s*nay)?|ch[ỗổốộôo]\s*ở(?:\s*hiện\s*tại|\s*hiện\s*nay)?)/i,"both"],
+  [/nơi\s*(?:thường\s*trú|đăng\s*ký\s*(?:thường\s*trú|HKTT))|thường\s*trú|HKTT|KHTT|ĐKTT|hộ\s*khẩu(?:\s*thường\s*trú)?/i,"thuong_tru"],
+  [/nơi\s*tạm\s*trú|tạm\s*trú|\bKT3\b/i,"tam_tru"],
+  [/n[ơo]i\s*ở\s*(?:hiện\s*tại|hiện\s*nay)|ch[ỗổốộôo]\s*ở\s*(?:hiện\s*tại|hiện\s*nay)|n[ơo]i\s*ở|ch[ỗổốộôo]\s*ở|hiện\s*(?:đang\s*)?ở|đang\s*ở|cư\s*ngụ|tạm\s*ngụ|ngụ|cư\s*trú/i,"noi_o_ht"],
+];
+const _IV_ADDR_OK=/\d|phường|xã|quận|huyện|tỉnh|ấp|khu|thôn|tổ|đường|số|phố|hẻm|chung\s*cư|thành\s*phố|\btp\b|\bkv\b|xóm|làng|buôn|lô/i;
+function _ivCleanAddr(v){
+  let val=String(v||"");
+  const cut=val.search(/\)\s*\(/);            // "…, TPHCM) (truy xét tại …"
+  if(cut>0)val=val.slice(0,cut);
+  val=val.replace(/^[\s:.,;–-]+/,"").replace(/[\s,;:.]+$/,"").replace(/\)+$/,"").trim();
+  val=val.replace(/[,;]\s*(?:CCCD|CMND|căn\s*cước|giới\s*tính)\s*[:.]?\s*[^,;]*$/i,"").trim();
+  if(val.replace(/[^A-Za-zÀ-ỹĐđ]/g,"").length<3)return"";   // "/", "-", "và"
+  if(!_IV_ADDR_OK.test(val))return"";
+  return val;
+}
+const _IV_BIRTH_RE=/(?:sinh\s*ngày|ngày\s*sinh|năm\s*sinh|sinh\s*năm|\bSN\b|\bS\/N\b|\bsn\b)/i;
+const _IV_CCCD_RE=/(?:CCCD|CMND|CMT|căn\s*cước(?:\s*công\s*dân)?|\bCC\b|\bsố\s*ĐDCN\b)\s*[:.]?\s*(\d{9,12})/i;
+// Tách khối theo số thứ tự "1/ 1. 1) 2. …" ở ĐẦU DÒNG; chỉ nhận các mốc tạo
+// thành dãy TĂNG DẦN để không nhận nhầm số nhà/khu phố bị xuống dòng.
+function ivSplitSubjectBlocks(cell){
+  let s=String(cell||"").replace(/ /g," ").replace(/\r/g,"");
+  s=s.replace(/^[\s]*\d{1,2}\s*(?:đ\/t|đt|đối\s*tượng)\b[^\n]*\n?/i,"");   // bỏ dòng đếm "03 đ/t"
+  const lines=s.split("\n"),marks=[];
+  lines.forEach((ln,i)=>{
+    const m=ln.match(/^\s*\+?\s*(\d{1,2})\s*[.)\/]?\s*(?=[^\d\s])/);
+    if(!m)return;
+    const num=+m[1];
+    if(num<1||num>30)return;
+    marks.push({num,line:i,cut:m[0].length});
+  });
+  const keep=[];
+  marks.forEach(mk=>{if(!keep.length||mk.num>keep[keep.length-1].num)keep.push(mk);});
+  if(!keep.length){const t=s.trim();return t?[t]:[];}
+  const blocks=[];
+  keep.forEach((mk,i)=>{
+    const endLine=i+1<keep.length?keep[i+1].line:lines.length;
+    const t=[lines[mk.line].slice(mk.cut),...lines.slice(mk.line+1,endLine)].join(" ").replace(/\s+/g," ").trim();
+    if(t)blocks.push(t);
+  });
+  return blocks;
+}
+// 1 khối văn bản → {ho_ten, nam_sinh(+cờ chỉ năm), thuong_tru, tam_tru, noi_o_ht, cccd, gioi_tinh}
+function ivParseSubject(block){
+  const s=String(block||"").replace(/\s+/g," ").trim();
+  const out={ho_ten:"",nam_sinh:"",nam_sinh_chi_nam:false,thuong_tru:"",tam_tru:"",noi_o_ht:"",cccd:"",gioi_tinh:""};
+  if(!s)return out;
+  const mc=s.match(_IV_CCCD_RE);
+  if(mc)out.cccd=mc[1];
+  const mg=s.match(/giới\s*tính\s*[:.]?\s*(Nam|Nữ)/i)||s.match(/(?:^|[,;(])\s*(Nam|Nữ)\s*(?=[,;).]|$)/);
+  if(mg)out.gioi_tinh=/^n[ữu]$/i.test(mg[1])?"Nữ":"Nam";
+  // Năm sinh: có ngày đầy đủ thì lấy ngày; chỉ có năm thì ghi yyyy-01-01 + cờ chỉ năm
+  const mb=s.match(new RegExp(_IV_BIRTH_RE.source+"\\s*[:.]?\\s*(\\d{1,2}\\s*[\\/\\-.]+\\s*\\d{1,2}\\s*[\\/\\-.]+\\s*\\d{2,4}|(?:19|20)\\d{2})","i"));
+  if(mb){
+    const v=mb[1].trim();
+    if(/^(?:19|20)\d{2}$/.test(v)){out.nam_sinh=v+"-01-01";out.nam_sinh_chi_nam=true;}
+    else{const iso=ivParseDate(v);if(iso)out.nam_sinh=iso;}
+  }
+  if(!out.nam_sinh){   // ghi trần ngày sinh sau tên: "Tùng (06/12/2000, HKTT…)"
+    const m0=s.match(/[(,;]\s*(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*(?:19|20)\d{2})/);
+    if(m0){const iso=ivParseDate(m0[1]);if(iso)out.nam_sinh=iso;}
+  }
+  // Họ và tên
+  const mn=s.match(/họ\s*(?:và\s*)?tên\s*[:.]?\s*([^,;(]+)/i);
+  let name=mn?mn[1]:"";
+  if(!name){
+    let head=s.split(/[(,;]/)[0];
+    const bm=head.search(_IV_BIRTH_RE);
+    if(bm>0)head=head.slice(0,bm);
+    const dm=head.match(/^(.*?[^\s.])\.\s/);
+    if(dm)head=dm[1];
+    name=head;
+  }else{
+    const bm=name.search(_IV_BIRTH_RE);
+    if(bm>0)name=name.slice(0,bm);
+  }
+  name=name.replace(/^[\s+\-–.:)/]*/,"").replace(/[\s,.;:+]+$/,"").replace(/\s+/g," ").trim();
+  name=name.replace(/\s*[,;]?\s*(Nam|Nữ)$/i,"").trim();
+  if(/\d/.test(name)||name.split(" ").length>8)name=name.split(" ").filter(w=>!/\d/.test(w)).slice(0,5).join(" ");
+  out.ho_ten=ivTitleCaseName(name);
+  // Địa chỉ theo nhãn
+  const hits=[];
+  _IV_ADDR_LABELS.forEach(([re,key])=>{
+    const g=new RegExp(re.source,"gi");
+    let m;
+    while((m=g.exec(s))!==null){
+      hits.push({key,start:m.index,end:m.index+m[0].length});
+      if(m.index===g.lastIndex)g.lastIndex++;
+    }
+  });
+  hits.sort((a,b)=>a.start-b.start||(b.end-b.start)-(a.end-a.start));
+  const clean=[];
+  hits.forEach(h=>{if(!clean.some(c=>h.start<c.end&&h.end>c.start))clean.push(h);});
+  clean.sort((a,b)=>a.start-b.start);
+  clean.forEach((h,i)=>{
+    const val=_ivCleanAddr(s.slice(h.end,i+1<clean.length?clean[i+1].start:s.length));
+    if(!val)return;
+    if(h.key==="both"){if(!out.thuong_tru)out.thuong_tru=val;if(!out.noi_o_ht)out.noi_o_ht=val;}
+    else if(!out[h.key])out[h.key]=val;
+  });
+  // Không có nhãn: phần còn lại sau năm sinh coi là HKTT
+  if(!out.thuong_tru&&!out.tam_tru&&!out.noi_o_ht&&mb){
+    const tail=_ivCleanAddr(s.slice(s.indexOf(mb[0])+mb[0].length));
+    if(tail)out.thuong_tru=tail;
+  }
+  return out;
+}
+// Tách TỪNG Ô "Đối tượng" riêng rồi nối danh sách (số thứ tự giữa các ô có thể
+// lặp hoặc nhảy bậc khi 1 vụ việc bị ghi trên nhiều dòng Excel), bỏ người trùng.
+function ivSubjectsFromCells(cells){
+  const arr=(cells||[]).map(c=>String(c||"")).filter(c=>c.trim());
+  const num=c=>{const m=c.match(/(\d{1,2})\s*[.)\/]/);return m?+m[1]:99;};
+  const ordered=arr.map((c,i)=>({c,n:num(c),i})).sort((a,b)=>a.n-b.n||a.i-b.i);
+  const subs=[],seen=new Set();
+  ordered.forEach(x=>ivSplitSubjectBlocks(x.c).forEach(b=>{
+    const s=ivParseSubject(b);
+    if(!s.ho_ten)return;
+    const k=_ivNorm(s.ho_ten)+"|"+(s.nam_sinh||"");
+    if(seen.has(k))return;
+    seen.add(k);
+    subs.push(s);
+  }));
+  return subs;
+}
+
+// ── Dò cột theo tiêu đề (không phụ thuộc vị trí cột) ──
+const _IV_COLSPEC=[
+  ["stt",/^stt$/],
+  ["ngay_tn",/ngay\s*tiep\s*nhan/],
+  ["ngay_xay_ra",/ngay.*dia\s*diem\s*xay\s*ra|ngay\s*xay\s*ra/],
+  ["toi_danh",/toi\s*danh|loai\s*vu\s*viec/],
+  ["noi_dung",/noi\s*dung\s*(to\s*giac|vu\s*viec|tin\s*bao)/],
+  ["don_vi",/ten\s*ca\s*nhan|co\s*quan\s*to\s*chuc\s*cung\s*cap|nguoi\s*cung\s*cap|don\s*vi\s*bat/],
+  ["doi_tuong",/^doi\s*tuong$|^doi\s*tuong\s/],
+  ["ket_qua",/ket\s*qua\s*giai\s*quyet|ket\s*qua\s*xu\s*ly/],
+  ["cbth",/^cbth$|can\s*bo\s*(thuc\s*hien|lam\s*truc\s*tiep)/],
+  ["noi_xay_ra",/noi\s*xay\s*ra/],
+  ["nguon_tin",/ten\s*nguon\s*tin|^nguon\s*tin$/],
+  ["ghi_chu",/^ghi\s*chu$/],
+  ["ma_tuy_thu",/^ma\s*tuy\s*thu|ma\s*tuy\s*thu\s*giu|^mt\s*thu$/],
+  ["kgm",/khong\s*gian\s*mang/],
+];
+// ── Cột "Ma tuý thu": dòng tên loại rồi tới các dòng khối lượng ──
+//    VD "MET\n7,5519\n0,4608"  |  "KET\n0,1098\n26,6880\nMDMA\n18,0015"  |  "Etomidate\n31ml"
+const _IV_MT_MAP=[
+  [/^(met|ma\s*tuy\s*da|meth(amphetamine)?|hang\s*da|da)$/,"Ma túy đá (MET)"],
+  [/^(thc|can\s*sa|co|bo\s*da|weed|marijuana)$/,"Cần sa (THC)"],
+  [/^(mdma|thuoc\s*lac|ecstasy|extasy)$/,"Thuốc lắc (MDMA)"],
+  [/^(ket|ketamine)$/,"Ketamine (KET)"],
+  [/^(eto|etomidate|nuoc\s*vui|khi\s*cuoi)$/,"Etomidate (ETO)"],
+  [/^(heroin|herroin|bach\s*phien)$/,"Heroin"],
+];
+function ivParseMaTuyThu(cell){
+  const raw=String(cell==null?"":cell).replace(/ /g," ").replace(/\r/g,"");
+  if(!raw.trim())return[];
+  // Ở một số bảng cũ, cột "Ma tuý thu" chỉ ghi SỐ LƯỢNG tang vật (VD "1", "2")
+  // chứ không ghi loại + khối lượng → không có dòng nào là tên loại ma túy.
+  // Trường hợp đó bỏ qua cả ô, tránh tạo ra dòng thu giữ "chưa rõ loại" sai lệch.
+  const hasLoai=raw.split(/[\n;]+/).some(ln=>{
+    const t=ln.trim().replace(/[.;,]+$/,"");
+    return t&&!/^[0-9]+(?:[.,][0-9]+)?\s*(kg|g(?:am|ram)?|ml|l(?:it)?|viên|vien|cây|cay)?\.?$/i.test(t);
+  });
+  if(!hasLoai)return[];
+  const out=[];
+  let loai="",loaiOther="";
+  raw.split(/[\n;]+/).forEach(ln0=>{
+    const ln=ln0.trim().replace(/[.;,]+$/,"");
+    if(!ln)return;
+    // Dòng khối lượng: bắt đầu bằng số (có thể kèm đơn vị "31ml", "0,5 g")
+    const mw=ln.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(kg|g(?:am|ram)?|ml|l(?:it)?|viên|vien|cây|cay)?\.?$/i);
+    if(mw){
+      let dvt="gam";
+      const u=stripDiacriticsVN(String(mw[2]||"")).toLowerCase();
+      if(u==="ml")dvt="ml";else if(u==="l"||u==="lit")dvt="ml";
+      else if(u==="kg")dvt="kg";else if(u==="vien")dvt="viên";else if(u==="cay")dvt="cây";
+      const e={...emptyNvMaTuy(),dt_id:"",khoi_luong:mw[1],don_vi_tinh:dvt};
+      if(loai){e.loai_ma_tuy=loai;e.loai_ma_tuy_other=loaiOther;}
+      out.push(e);
+      return;
+    }
+    // Dòng tên loại ma túy
+    const n=_ivNorm(ln);
+    const hit=_IV_MT_MAP.find(([re])=>re.test(n));
+    if(hit){loai=hit[1];loaiOther="";}
+    else{loai="Khác";loaiOther=ln;}
+  });
+  // Chỉ ghi tên loại mà không có khối lượng → vẫn tạo 1 dòng để không mất dữ liệu
+  if(!out.length&&loai)out.push({...emptyNvMaTuy(),dt_id:"",loai_ma_tuy:loai,loai_ma_tuy_other:loaiOther});
+  return out;
+}
+// ── Cột "Mua bán qua không gian mạng": 0/trống = Không; có chữ = Có + mô tả ──
+function ivParseKGM(cell){
+  const t=_ivTxt(cell);
+  if(!t)return{mua_ban_kgm:"Không",mua_ban_kgm_mota:""};
+  const n=_ivNorm(t);
+  if(n==="0"||n==="khong"||n==="k"||n==="no"||n==="false")return{mua_ban_kgm:"Không",mua_ban_kgm_mota:""};
+  if(n==="1"||n==="x"||n==="co"||n==="yes"||n==="true")return{mua_ban_kgm:"Có",mua_ban_kgm_mota:""};
+  return{mua_ban_kgm:"Có",mua_ban_kgm_mota:t.replace(/\s*\n\s*/g," ").trim()};
+}
+function ivFindHeader(aoa){
+  for(let i=0;i<Math.min(aoa.length,25);i++){
+    const row=aoa[i]||[],m={};
+    row.forEach((c,ci)=>{
+      const n=_ivNorm(c);
+      if(!n)return;
+      _IV_COLSPEC.forEach(([k,re])=>{if(m[k]===undefined&&re.test(n))m[k]=ci;});
+    });
+    if(m.doi_tuong!==undefined&&(m.ngay_tn!==undefined||m.toi_danh!==undefined))return{headerIdx:i,map:m};
+  }
+  return null;
+}
+// Đọc 1 sheet → danh sách vụ việc đã bóc tách sẵn (chưa ghi vào kho dữ liệu).
+// Các dòng Excel có CÙNG số thứ tự (STT) được gộp thành 1 vụ việc, vì bảng
+// tổng hợp thường tách danh sách đối tượng của 1 vụ ra nhiều dòng.
+function ivBuildRowsFromSheet(aoa,hdr,existing){
+  const{headerIdx,map}=hdr;
+  const baseCodes=new Set((existing||[]).map(r=>String(r.ma_vu_viec||"").toUpperCase()).filter(Boolean));
+  const usedCodes=new Set(baseCodes);
+  const existSig=new Set((existing||[]).map(r=>String(r.ngay_phat_hien||"")+"|"+_ivNorm((r.doi_tuong||[])[0]&&(r.doi_tuong||[])[0].ho_ten)).filter(x=>x!=="|"));
+  const groups=[];
+  for(let i=headerIdx+1;i<aoa.length;i++){
+    const row=aoa[i]||[];
+    const get=k=>map[k]===undefined?"":row[map[k]];
+    const stt=String(get("stt")==null?"":get("stt")).trim();
+    if(!["toi_danh","doi_tuong","noi_dung","ngay_tn"].some(k=>String(get(k)==null?"":get(k)).trim()))continue;
+    if(_ivNorm(get("doi_tuong"))==="doi tuong")continue;              // dòng tiêu đề lặp
+    const CARRY=["toi_danh","noi_dung","don_vi","ket_qua","ngay_tn","ngay_xay_ra","noi_xay_ra","nguon_tin","ghi_chu","kgm"];
+    const prev=groups[groups.length-1];
+    if(stt&&prev&&prev.stt===stt){
+      prev.excelRows.push(i+1);
+      prev.dtCells.push(String(get("doi_tuong")||""));
+      prev.cbCells.push(String(get("cbth")||""));
+      prev.mtCells.push(String(get("ma_tuy_thu")||""));
+      CARRY.forEach(k=>{if(!String(prev.raw[k]==null?"":prev.raw[k]).trim())prev.raw[k]=get(k);});
+      continue;
+    }
+    const raw={};
+    CARRY.forEach(k=>{raw[k]=get(k);});
+    groups.push({stt,excelRows:[i+1],raw,dtCells:[String(get("doi_tuong")||"")],cbCells:[String(get("cbth")||"")],mtCells:[String(get("ma_tuy_thu")||"")]});
+  }
+  const db=parseDonViDiaBan(CONFIG.donVi);
+  const out=[],canhBao=[];
+  groups.forEach(g=>{
+    const iso=ivParseDate(g.raw.ngay_tn)||ivParseDate(g.raw.ngay_xay_ra);
+    const loai=ivMapLoaiVuViec(g.raw.toi_danh);
+    const dvi=ivMapDonVi(g.raw.don_vi);
+    const noiDung=_ivTxt(g.raw.noi_dung);
+    const subs=ivSubjectsFromCells(g.dtCells);
+    const cb=Array.from(new Set(g.cbCells.map(ivTitleCaseName).filter(Boolean))).join(", ");
+    const nhan="Dòng "+g.excelRows.join("+")+(g.stt?" (STT "+g.stt+")":"");
+    const isoND=ivFirstDateInText(noiDung);
+    const suspect=ivDateSuspect(iso,isoND);
+    const kgm=ivParseKGM(g.raw.kgm);
+    // Ma túy thu giữ: file Excel không ghi thu của đối tượng nào → để trống ô
+    // "Đối tượng"; khi lưu, vụ chỉ có 1 đối tượng sẽ được gán tự động cho người đó,
+    // vụ nhiều đối tượng thì cán bộ mở form chọn lại.
+    const maTuy=[];
+    (g.mtCells||[]).forEach(c=>ivParseMaTuyThu(c).forEach(m=>maTuy.push(m)));
+    const ngRaw=_ivTxt(g.raw.nguon_tin);
+    const ngHit=OPT_NGUON_TIN_NV.find(o=>_ivNorm(o)===_ivNorm(ngRaw));
+    const r={
+      noi_xay_ra:_ivTxt(g.raw.noi_xay_ra),
+      ten_nguon_tin:ngRaw?(ngHit||"Khác"):"Tin báo",ten_nguon_tin_other:ngRaw&&!ngHit?ngRaw:"",
+      ghi_chu:_ivTxt(g.raw.ghi_chu).replace(/\s*\n\s*/g,"; "),
+      mua_ban_kgm:kgm.mua_ban_kgm,mua_ban_kgm_mota:kgm.mua_ban_kgm_mota,
+      ma_tuy_thu:maTuy,
+      _key:g.excelRows.join("-"),_sel:true,_excelRows:g.excelRows,_stt:g.stt,
+      ma_vu_viec:"",_codeEdited:false,
+      ngay_phat_hien:iso,_ngayGoc:iso,_ngaySuggest:suspect?isoND:"",_suspect:suspect,
+      loai_vu_viec:loai.loai_vu_viec,loai_vu_viec_other:loai.loai_vu_viec_other,
+      noi_dung_vu_viec:noiDung,don_vi_bat_moi:dvi.don_vi_bat_moi,
+      ket_qua_xu_ly:_ivTxt(g.raw.ket_qua).replace(/\s*\n\s*/g,"; ").replace(/\s{2,}/g," "),
+      can_bo_lam_truc_tiep:cb,doi_tuong:subs,
+      _nDiaBan:filterSubjectsInDiaBan(subs,db).length,_dup:false,
+    };
+    if(!iso)canhBao.push(nhan+": không đọc được \"Ngày tiếp nhận\" → chưa có mã vụ việc, cần nhập tay");
+    if(!subs.length)canhBao.push(nhan+": không bóc tách được đối tượng nào từ cột \"Đối tượng\"");
+    if(maTuy.length&&subs.length>1)canhBao.push(nhan+": có "+maTuy.length+" dòng ma túy thu giữ nhưng file Excel không ghi thu của đối tượng nào → cần mở vụ việc để chọn đối tượng cho từng dòng");
+    if(!maTuy.length&&String(g.mtCells.join("")||"").trim())canhBao.push(nhan+": cột \"Ma tuý thu\" chỉ ghi số lượng (\""+String(g.mtCells.join(" ")).replace(/\s+/g," ").trim().slice(0,20)+"\"), không có loại/khối lượng → đã bỏ qua");
+    if(!loai.ok&&loai.loai_vu_viec_other)canhBao.push(nhan+": tội danh \""+loai.loai_vu_viec_other+"\" không khớp Điều BLHS nào → để \"Khác\"");
+    if(dvi.ok===false)canhBao.push(nhan+": chưa nhận diện được đơn vị từ \""+String(dvi.raw||"").slice(0,45)+"\" → tạm điền \""+dvi.don_vi_bat_moi+"\"");
+    if(suspect==="swap")canhBao.push(nhan+": ngày tiếp nhận "+fmtDate(iso)+" có thể bị đảo ngày/tháng (nội dung ghi "+fmtDate(isoND)+")");
+    if(suspect==="year")canhBao.push(nhan+": ngày tiếp nhận "+fmtDate(iso)+" lệch năm so với nội dung ("+fmtDate(isoND)+")");
+    const sig=iso+"|"+_ivNorm(subs[0]&&subs[0].ho_ten);
+    if(existSig.has(sig)){r._dup=true;r._sel=false;}
+    out.push(r);
+  });
+  // Cấp mã vụ việc MT+ddmmyy; trùng ngày thì thêm "-2", "-3"…
+  out.forEach(r=>{r.ma_vu_viec=ivUniqueCode(ivMaVuViec(r.ngay_phat_hien),usedCodes);});
+  return{rows:out,canhBao,baseCodes};
+}
+// Chuyển 1 dòng xem trước thành bản ghi Vụ việc đầy đủ (đủ mọi trường của form)
+function ivToRecord(r){
+  const base={};
+  F_NV_VUVIEC.forEach(f=>{base[f.k]=f.def||"";base[f.k+"_other"]="";});
+  const subs=(r.doi_tuong||[]).map(s=>{
+    const o=emptyNvSubject();
+    o.ho_ten=s.ho_ten;o.nam_sinh=s.nam_sinh;o.thuong_tru=s.thuong_tru;
+    o.tam_tru=s.tam_tru;o.noi_o_ht=s.noi_o_ht;o.cccd=s.cccd;
+    if(s.gioi_tinh)o.gioi_tinh=s.gioi_tinh;
+    if(s.nam_sinh_chi_nam)o.nam_sinh_chi_nam=true;
+    return o;
+  });
+  // Ma túy thu giữ — vụ chỉ có 1 đối tượng thì gán luôn cho đối tượng đó
+  const mt=(r.ma_tuy_thu||[]).map(m=>({...m,_id:m._id||uid()}));
+  if(subs.length===1)mt.forEach(m=>{if(!m.dt_id){m.dt_id=subs[0]._id;m.ho_ten_snapshot=subs[0].ho_ten||"";}});
+  // Trọng lượng ma túy thu giữ của từng đối tượng (trường sẵn có ở phần Đối tượng)
+  subs.forEach(s=>{
+    const mine=mt.filter(m=>m.dt_id===s._id);
+    if(mine.length&&!String(s.trong_luong_thu_giu||"").trim())s.trong_luong_thu_giu=nvMoTaMaTuy(mine);
+  });
+  return{
+    ...base,
+    ma_vu_viec:r.ma_vu_viec,
+    loai_vu_viec:r.loai_vu_viec,loai_vu_viec_other:r.loai_vu_viec_other||"",
+    ngay_phat_hien:r.ngay_phat_hien,
+    noi_xay_ra:r.noi_xay_ra||"",
+    ten_nguon_tin:r.ten_nguon_tin||"Tin báo",ten_nguon_tin_other:r.ten_nguon_tin_other||"",
+    noi_dung_vu_viec:r.noi_dung_vu_viec,
+    don_vi_bat_moi:r.don_vi_bat_moi,
+    mua_ban_kgm:r.mua_ban_kgm||"Không",mua_ban_kgm_mota:r.mua_ban_kgm_mota||"",
+    ket_qua_xu_ly:r.ket_qua_xu_ly,
+    ghi_chu:r.ghi_chu||"",
+    can_bo_lam_truc_tiep:r.can_bo_lam_truc_tiep,
+    doi_tuong:subs,
+    ma_tuy_thu:mt,
+    _id:uid(),_created:new Date().toISOString(),
+    _src_excel:(r._excelRows||[]).join("+"),
+  };
+}
+// Năm sinh chỉ biết năm → hiển thị đúng "1996" thay vì "01/01/1996"
+function fmtNamSinh(rec){
+  const v=rec&&rec.nam_sinh;
+  if(!v)return"";
+  if(rec.nam_sinh_chi_nam&&/^\d{4}-01-01$/.test(String(v)))return String(v).slice(0,4);
+  return fmtDate(v);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// XUẤT NGƯỢC RA FILE EXCEL TỔNG HỢP (đúng 14 cột của bảng theo dõi tin báo)
+// Dùng lại chính định dạng file nguồn, nên file xuất ra có thể nhập lại vào
+// phần mềm bằng nút "📥 Chèn từ file Excel" mà không mất dữ liệu.
+// ══════════════════════════════════════════════════════════════════════
+const IV_EXPORT_HEADERS=["STT","Ngày, địa điểm  xảy ra","Nơi xảy ra vụ việc","ngày tiếp nhận","Tội danh",
+  "Tên nguồn tin","Tên cá nhân, cơ quan, tổ chức cung cấp","Nội dung tố giác ","Đối tượng",
+  "Kết quả giải quyết","ghi chú","CBTH","Ma tuý thu","Mua bán qua không gian mạng"];
+const IV_EXPORT_WIDTHS=[5,15,28,13,26,13,26,52,52,20,22,16,16,30];
+// Dựng lại ô "Đối tượng" theo đúng cách ghi của file gốc:
+//   "1. Họ và tên (SN …; HKTT: …; Nơi ở hiện tại: …)"
+function ivSubjectCellText(subs){
+  const list=(subs||[]).filter(s=>String(s.ho_ten||"").trim());
+  return list.map((s,i)=>{
+    const parts=[];
+    if(s.nam_sinh)parts.push("SN: "+fmtNamSinh(s));
+    if(s.cccd)parts.push("CCCD: "+s.cccd);
+    if(s.thuong_tru)parts.push("HKTT: "+s.thuong_tru);
+    if(s.tam_tru)parts.push("Nơi tạm trú: "+s.tam_tru);
+    if(s.noi_o_ht)parts.push("Nơi ở hiện tại: "+s.noi_o_ht);
+    return `${i+1}. ${s.ho_ten}${parts.length?" ("+parts.join("; ")+")":""}`;
+  }).join("\n");
+}
+// Dựng lại ô "Ma tuý thu" theo đúng cách ghi của file gốc: tên loại rồi các dòng khối lượng
+//   MET
+//   7,5519
+//   0,4608
+function ivMaTuyCellText(list){
+  const groups=[];
+  (list||[]).forEach(m=>{
+    const loai=dv(m,"loai_ma_tuy")||"(chưa rõ loại)";
+    let g=groups.find(x=>x.loai===loai);
+    if(!g){g={loai,kl:[]};groups.push(g);}
+    const kl=String(m.khoi_luong||"").trim();
+    if(kl)g.kl.push(kl+(m.don_vi_tinh&&m.don_vi_tinh!=="gam"?m.don_vi_tinh:""));
+  });
+  return groups.map(g=>[g.loai,...g.kl].join("\n")).join("\n");
+}
+function buildIvExportRows(records){
+  return records.map((r,i)=>[
+    String(i+1),
+    fmtDate(r.ngay_phat_hien)||"",
+    r.noi_xay_ra||"",
+    fmtDate(r.ngay_phat_hien)||"",
+    dv(r,"loai_vu_viec")||"",
+    dv(r,"ten_nguon_tin")||"",
+    r.don_vi_bat_moi||"",
+    r.noi_dung_vu_viec||"",
+    ivSubjectCellText(r.doi_tuong),
+    r.ket_qua_xu_ly||"",
+    r.ghi_chu||"",
+    r.can_bo_lam_truc_tiep||"",
+    ivMaTuyCellText(r.ma_tuy_thu),
+    r.mua_ban_kgm==="Có"?(r.mua_ban_kgm_mota||"Có"):"0",
+  ]);
+}
+function exportVuViecToExcel(records,toast){
+  if(!window.XLSX){toast("Chưa tải được thư viện xuất Excel. Kiểm tra kết nối mạng.","error");return;}
+  if(!records.length){toast("Không có vụ việc nào phù hợp bộ lọc để xuất","error");return;}
+  try{
+    const rows=buildIvExportRows(records);
+    const ws=XLSX.utils.aoa_to_sheet([IV_EXPORT_HEADERS,...rows]);
+    ws["!cols"]=IV_EXPORT_WIDTHS.map(w=>({wch:w}));
+    const NC=IV_EXPORT_HEADERS.length;
+    const border={style:"thin",color:{rgb:"9FB3C8"}};
+    for(let R=0;R<=rows.length;R++){
+      // chiều cao hàng theo số dòng nội dung nhiều nhất trong hàng
+      if(R>0){
+        const maxLines=Math.max(1,...rows[R-1].map(v=>String(v||"").split("\n").length));
+        ws["!rows"]=ws["!rows"]||[];
+        ws["!rows"][R]={hpt:Math.max(18,Math.min(240,maxLines*14))};
+      }
+      for(let C=0;C<NC;C++){
+        const addr=XLSX.utils.encode_cell({r:R,c:C});
+        if(!ws[addr])ws[addr]={t:"s",v:""};
+        ws[addr].s={
+          font:R===0?{bold:true,sz:10,color:{rgb:"FFFFFF"}}:{sz:10},
+          fill:R===0?{fgColor:{rgb:"1E3A6E"}}:undefined,
+          alignment:{wrapText:true,vertical:R===0?"center":"top",horizontal:(C===0)?"center":"left"},
+          border:{top:border,bottom:border,left:border,right:border},
+        };
+      }
+    }
+    ws["!freeze"]={xSplit:0,ySplit:1};
+    ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length,c:NC-1}})};
+    _setPrint(ws,NC,{landscape:true});
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Sheet1");
+    saveWorkbookA4(wb,`TongHop_VuViecMaTuy_${CONFIG.donVi.replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast(`✅ Đã xuất ${records.length} vụ việc ra file Excel tổng hợp (14 cột như file mẫu)`,"success");
+  }catch(e){toast("❌ Lỗi xuất file Excel: "+e.message,"error");}
+}
+
+// ── Modal xem trước & xác nhận nhập từ Excel ──
+function NvExcelImportModal({preview,onClose,onConfirm}){
+  const [rows,setRows]=useState(()=>preview.rows.map(r=>({...r})));
+  const {style:dragStyle,dragHandleProps}=useDraggableModal();
+  const [showWarn,setShowWarn]=useState(false);
+  const sel=rows.filter(r=>r._sel);
+  const nDt=sel.reduce((a,r)=>a+(r.doi_tuong||[]).length,0);
+  const nDb=sel.reduce((a,r)=>a+(r._nDiaBan||0),0);
+  const diaBan=parseDonViDiaBan(CONFIG.donVi);
+  // Cấp lại mã cho tất cả dòng chưa sửa tay, đảm bảo không trùng nhau
+  const recode=list=>{
+    const used=new Set(Array.from(preview.baseCodes||[]));
+    list.forEach(r=>{if(r._codeEdited&&r.ma_vu_viec)used.add(r.ma_vu_viec.toUpperCase());});
+    return list.map(r=>r._codeEdited?r:{...r,ma_vu_viec:ivUniqueCode(ivMaVuViec(r.ngay_phat_hien),used)});
+  };
+  const upd=(key,patch)=>setRows(p=>recode(p.map(r=>r._key===key?{...r,...patch}:r)));
+  const toggleAll=v=>setRows(p=>p.map(r=>({...r,_sel:v})));
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(10,20,50,.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:1100,overflowY:"auto",padding:"12px 8px"}}>
+      <div style={{background:"#fff",borderRadius:14,width:"min(1200px,99vw)",margin:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)",display:"flex",flexDirection:"column",maxHeight:"96vh",...dragStyle}}>
+        <div {...dragHandleProps} style={{...dragHandleProps.style,background:"linear-gradient(135deg,#0d1b3e 0%,#1e3a6e 100%)",borderRadius:"14px 14px 0 0",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div>
+            <div style={{color:"#fff",fontSize:15,fontWeight:700}}>📥 Xem trước dữ liệu nhập từ Excel – Vụ việc ma túy mới</div>
+            <div style={{color:"#bfdbfe",fontSize:11.5,marginTop:2}}>{preview.fileName}</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",cursor:"pointer",color:"#fff",width:30,height:30,borderRadius:7,fontSize:16}}>✕</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 18px"}}>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
+            {[["🆕 Vụ việc sẽ nhập",sel.length,"#2e7d32","#e8f5e9","#a5d6a7"],
+              ["👤 Đối tượng",nDt,"#1565c0","#e3f2fd","#90caf9"],
+              ["🏠 Thuộc "+(diaBan?diaBan.label:"địa bàn"),nDb,"#c2410c","#fff7ed","#fed7aa"],
+              ["⏭ Đã có, bỏ qua",rows.filter(r=>r._dup).length,"#f57f17","#fff8e1","#ffe082"]].map(([lbl,n,c,bg,bd])=>(
+              <div key={lbl} style={{background:bg,border:"1px solid "+bd,borderRadius:9,padding:"8px 14px",minWidth:120}}>
+                <div style={{fontSize:24,fontWeight:800,color:c,lineHeight:1}}>{n}</div>
+                <div style={{fontSize:11,color:"#475569",marginTop:3}}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+          {(preview.canhBao||[]).length>0&&
+            <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:9,padding:"9px 13px",marginBottom:11,fontSize:12,color:"#854d0e",lineHeight:1.6}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setShowWarn(v=>!v)}>
+                <b>⚠️ Cần kiểm tra lại ({preview.canhBao.length} điểm)</b>
+                <span style={{fontSize:11}}>{showWarn?"▲ thu gọn":"▼ xem chi tiết"}</span>
+              </div>
+              {showWarn&&<div style={{marginTop:6,maxHeight:170,overflowY:"auto"}}>{preview.canhBao.map((c,i)=><div key={i}>• {c}</div>)}</div>}
+            </div>}
+          <div style={{fontSize:11.8,color:"#475569",marginBottom:7,lineHeight:1.6}}>
+            Mã vụ việc được tạo tự động theo <b>MT + ngày tháng năm</b> của cột “Ngày tiếp nhận” (VD 09/09/2026 → <b>MT090926</b>).
+            Có thể sửa trực tiếp <b>mã</b> và <b>ngày</b> ngay tại bảng này trước khi nhập — sửa ngày thì mã tự cập nhật theo.
+          </div>
+          <div className="tbl-wrap" style={{maxHeight:420,overflowY:"auto"}}>
+            <table>
+              <thead><tr>
+                <th style={{width:34,textAlign:"center"}}><input type="checkbox" checked={sel.length===rows.length&&rows.length>0} onChange={e=>toggleAll(e.target.checked)}/></th>
+                <th style={{minWidth:124}}>Mã vụ việc</th>
+                <th style={{minWidth:168}}>Ngày phát hiện</th>
+                <th style={{minWidth:190}}>Loại vụ việc</th>
+                <th style={{minWidth:165}}>Đơn vị bắt/mời</th>
+                <th style={{minWidth:210}}>Đối tượng</th>
+                <th style={{minWidth:140}}>Ma túy thu giữ</th>
+                <th style={{minWidth:120}}>Mua bán qua KGM</th>
+                <th style={{minWidth:120}}>CB làm trực tiếp</th>
+                <th style={{minWidth:130}}>Kết quả xử lý</th>
+              </tr></thead>
+              <tbody>
+                {rows.map(r=>(
+                  <tr key={r._key} style={r._sel?undefined:{opacity:.5}}>
+                    <td style={{textAlign:"center"}}><input type="checkbox" checked={!!r._sel} onChange={e=>upd(r._key,{_sel:e.target.checked})}/></td>
+                    <td>
+                      <input className="fi" style={{padding:"4px 6px",fontSize:12,fontWeight:700,color:"var(--navy)",width:112}}
+                        value={r.ma_vu_viec} onChange={e=>upd(r._key,{ma_vu_viec:e.target.value,_codeEdited:true})}/>
+                      {r._dup&&<div style={{fontSize:10,color:"#b45309",fontWeight:700,marginTop:2}}>⏭ đã có trong phần mềm</div>}
+                    </td>
+                    <td>
+                      <input type="date" className="fi" style={{padding:"4px 6px",fontSize:12,width:140}}
+                        value={r.ngay_phat_hien} onChange={e=>upd(r._key,{ngay_phat_hien:e.target.value})}/>
+                      {r._ngaySuggest&&r.ngay_phat_hien!==r._ngaySuggest&&
+                        <button type="button" className="btn btn-ghost btn-sm" style={{marginTop:3,fontSize:10.5,padding:"2px 6px"}}
+                          title={"Nội dung vụ việc ghi ngày "+fmtDate(r._ngaySuggest)+" — bấm để dùng ngày này"}
+                          onClick={()=>upd(r._key,{ngay_phat_hien:r._ngaySuggest})}>⇄ dùng {fmtDate(r._ngaySuggest)}</button>}
+                      <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
+                        {r.ngay_phat_hien?<b style={{color:"#1e40af"}}>{fmtDate(r.ngay_phat_hien)}</b>:<b style={{color:"#ef4444"}}>chưa có ngày</b>} · dòng {(r._excelRows||[]).join("+")}
+                      </div>
+                    </td>
+                    <td><TextCell v={r.loai_vu_viec==="Khác"?(r.loai_vu_viec_other||"Khác"):r.loai_vu_viec} max={42}/></td>
+                    <td style={{fontSize:12}}>{r.don_vi_bat_moi||"—"}</td>
+                    <td>
+                      {(r.doi_tuong||[]).length===0?<span style={{color:"#ef4444",fontSize:11.5,fontWeight:700}}>⚠️ không có đối tượng</span>:
+                        <div style={{display:"flex",flexDirection:"column",gap:1}}>
+                          {r.doi_tuong.map((s,si)=>(
+                            <span key={si} style={{fontSize:11.5}}>
+                              <b style={{color:"var(--navy)"}}>{si+1}. {s.ho_ten}</b>
+                              {s.nam_sinh?<span style={{color:"#64748b"}}> – {fmtNamSinh(s)}</span>:null}
+                              {subjectInDiaBan(s,diaBan)?<span title={"Thuộc "+(diaBan?diaBan.label:"địa bàn")+" → sẽ vào mục Đối tượng bị bắt trên địa bàn"} style={{marginLeft:4}}>🏠</span>:null}
+                            </span>
+                          ))}
+                        </div>}
+                    </td>
+                    <td style={{fontSize:11.3}}>
+                      {(r.ma_tuy_thu||[]).length?
+                        <span title="File Excel không ghi ma túy thu của đối tượng nào — vụ nhiều đối tượng cần mở form chọn lại đối tượng cho từng dòng">
+                          {nvMoTaMaTuy(r.ma_tuy_thu)}
+                          {(r.doi_tuong||[]).length>1&&<div style={{color:"#b45309",fontSize:10,marginTop:2}}>⚠️ cần chọn đối tượng</div>}
+                        </span>:<span style={{color:"#cbd5e1"}}>—</span>}
+                    </td>
+                    <td style={{fontSize:11.3}}>
+                      {r.mua_ban_kgm==="Có"?
+                        <><b style={{color:"#b91c1c"}}>Có</b>{r.mua_ban_kgm_mota?<div style={{color:"#64748b",marginTop:1}}>{r.mua_ban_kgm_mota.slice(0,60)}{r.mua_ban_kgm_mota.length>60?"…":""}</div>:null}</>
+                        :<span style={{color:"#94a3b8"}}>Không</span>}
+                    </td>
+                    <td style={{fontSize:11.5}}>{r.can_bo_lam_truc_tiep||"—"}</td>
+                    <td><TextCell v={r.ket_qua_xu_ly} max={26}/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style={{padding:"12px 18px",borderTop:"1px solid #eee",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexShrink:0}}>
+          <div style={{fontSize:11.8,color:"var(--muted)"}}>
+            {sel.length?`Sẽ thêm ${sel.length} vụ việc / ${nDt} đối tượng — trong đó ${nDb} đối tượng thuộc ${diaBan?diaBan.label:"địa bàn đơn vị"} tự vào mục “Đối tượng bị bắt trên địa bàn”.`
+              :"Chưa chọn vụ việc nào để nhập."}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
+            <button className="btn btn-green" disabled={!sel.length} onClick={()=>onConfirm(sel)}>✅ Xác nhận nhập {sel.length} vụ việc</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Khối "Số ma túy thu giữ được" trong form Vụ việc ─────────────────
+// Mỗi dòng: chọn ĐỐI TƯỢNG (lấy từ danh sách đối tượng đã thêm của chính vụ việc),
+// chọn xong mới hiện ô "Loại ma túy thu giữ" và "Khối lượng thu giữ" để nhập.
+// Tổng khối lượng theo từng loại được tự cộng sang mục Vụ án/Vụ việc (PL VỤ – PC04).
+function NvMaTuyThuBlock({list,setList,subjects}){
+  const named=(subjects||[]).filter(s=>String(s.ho_ten||"").trim());
+  const upd=(id,patch)=>setList(p=>p.map(m=>m._id===id?{...m,...patch}:m));
+  const add=()=>setList(p=>[...p,{...emptyNvMaTuy(),dt_id:named.length===1?named[0]._id:""}]);
+  const del=id=>setList(p=>p.filter(m=>m._id!==id));
+  const tong=nvGomMaTuyTheoLoai(list);
+  return(
+    <div style={{border:"1.5px solid #dde3f0",borderRadius:11,padding:"13px 15px",marginTop:14,background:"#fbfdff"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:9,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:13.5,color:"var(--navy)"}}>💊 Số ma túy thu giữ được ({(list||[]).length})</div>
+          <div style={{fontSize:11.3,color:"var(--muted)",marginTop:2}}>
+            Chọn đối tượng trong vụ việc rồi nhập loại và khối lượng ma túy thu giữ của đối tượng đó.
+            Một đối tượng có thể thu nhiều loại — bấm “＋ Thêm dòng” cho mỗi loại.
+          </div>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!named.length} onClick={add}>＋ Thêm dòng ma túy thu giữ</button>
+      </div>
+      {!named.length&&
+        <div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 11px"}}>
+          ⚠️ Cần nhập họ tên đối tượng ở phần trên trước, sau đó mới chọn được đối tượng cho ma túy thu giữ.
+        </div>}
+      {named.length>0&&(list||[]).length===0&&
+        <div style={{fontSize:12,color:"var(--muted)",padding:"10px 2px"}}>Vụ việc này chưa khai báo ma túy thu giữ. Nếu có thu giữ, bấm <b>＋ Thêm dòng ma túy thu giữ</b>.</div>}
+      {(list||[]).map((m,i)=>{
+        const chuaChon=!m.dt_id;
+        return(
+          <div key={m._id} style={{border:"1px solid #e2e8f0",borderRadius:9,padding:"10px 12px",marginBottom:8,background:"#fff"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+              <span style={{fontSize:11.5,fontWeight:800,color:"var(--navy)"}}>Dòng {i+1}</span>
+              <button type="button" className="btn btn-sm btn-icon act-delete" title="Xóa dòng này" onClick={()=>del(m._id)}>🗑️</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:"9px 13px"}}>
+              <div>
+                <label style={{fontSize:11.5,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Đối tượng <span style={{color:"#e53935"}}>*</span></label>
+                <select className="fi" value={m.dt_id||""} onChange={e=>upd(m._id,{dt_id:e.target.value})}>
+                  <option value="">— Chọn đối tượng —</option>
+                  {named.map((s,si)=><option key={s._id} value={s._id}>{si+1}. {s.ho_ten}</option>)}
+                </select>
+              </div>
+              {chuaChon?
+                <div style={{gridColumn:"1 / -1",fontSize:11.8,color:"var(--muted)",alignSelf:"center",paddingTop:4}}>
+                  👉 Chọn đối tượng ở ô bên trái để hiện phần <b>Loại ma túy thu giữ</b> và <b>Khối lượng thu giữ</b>.
+                </div>
+                :<>
+                  <div>
+                    <label style={{fontSize:11.5,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Loại ma túy thu giữ</label>
+                    <FieldInput f={F_NV_MATUY[1]} value={m.loai_ma_tuy} valueOther={m.loai_ma_tuy_other}
+                      onChange={v=>upd(m._id,{loai_ma_tuy:v})} onChangeOther={v=>upd(m._id,{loai_ma_tuy_other:v})}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11.5,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Khối lượng thu giữ</label>
+                    <input className="fi" placeholder="VD: 7,5519" value={m.khoi_luong||""} onChange={e=>upd(m._id,{khoi_luong:e.target.value})}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11.5,fontWeight:700,color:"#475569",display:"block",marginBottom:4}}>Đơn vị tính</label>
+                    <select className="fi" value={m.don_vi_tinh||"gam"} onChange={e=>upd(m._id,{don_vi_tinh:e.target.value})}>
+                      {OPT_DON_VI_MA_TUY.map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </>}
+            </div>
+          </div>
+        );
+      })}
+      {tong.length>0&&
+        <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#0c4a6e",lineHeight:1.6}}>
+          🧮 <b>Tổng thu giữ:</b> {tong.map(g=>`${g.loai} ${nvKLText(g.tong)||"—"} ${g.don_vi}`).join(" · ")}
+          <div style={{fontSize:11,color:"#0369a1",marginTop:2}}>Số liệu này tự cộng sang cột tang vật ma túy tương ứng ở mục 📁 Vụ án/Vụ việc về ma túy (PL VỤ – PC04).</div>
+        </div>}
+    </div>
+  );
+}
+
 // ── Modal Thêm/Sửa Vụ việc (kèm nhiều Đối tượng bên trong) ──
 // ── Xuất báo cáo thống kê Nghiệp vụ ra Excel (đầy đủ mọi trường, đúng thể thức văn bản) ──
 function fieldValNV(rec,f){
   const raw=dv(rec,f.k);
   if(!raw)return"";
+  if(f.k==="nam_sinh")return fmtNamSinh(rec)||"";
   if(f.type==="date")return fmtDate(raw)||"";
   return raw;
 }
@@ -12934,16 +14309,28 @@ function joinSubjectField(subs,f){
   if(subs.length<=1)return fieldValNV(subs[0]||{},f);
   return subs.map((s,si)=>`${si+1}. ${fieldValNV(s,f)||"—"}`).join("\n");
 }
+// Cột phụ (không thuộc F_NV_VUVIEC) cho danh sách "Số ma túy thu giữ được"
+const _NV_COL_MATUY={lbl:"Số ma túy thu giữ được (đối tượng – loại – khối lượng)",type:"textarea"};
+// Liệt kê từng dòng ma túy thu giữ kèm tên đối tượng, mỗi dòng 1 hàng trong ô
+function nvMaTuyChiTietText(rec){
+  const subs=rec.doi_tuong||[];
+  return (rec.ma_tuy_thu||[]).map(m=>{
+    const ten=nvMaTuyTenDT(m,subs);
+    const loai=dv(m,"loai_ma_tuy")||"(chưa rõ loại)";
+    const kl=String(m.khoi_luong||"").trim();
+    return (ten?ten+" – ":"")+loai+(kl?": "+kl+" "+(m.don_vi_tinh||"gam"):"");
+  }).join("\n");
+}
 function buildNghiepVuExportRows(records){
-  const headers=["STT",...F_NV_VUVIEC.map(f=>f.lbl),...F_NV_DOITUONG.map(f=>f.lbl)];
+  const headers=["STT",...F_NV_VUVIEC.map(f=>f.lbl),_NV_COL_MATUY.lbl,...F_NV_DOITUONG.map(f=>f.lbl)];
   const rows=[];
   const subCounts=[]; // số đối tượng trong mỗi hàng — dùng để tính chiều cao hàng
   records.forEach((r,i)=>{
     const caseVals=F_NV_VUVIEC.map(f=>fieldValNV(r,f));
     const subs=(r.doi_tuong&&r.doi_tuong.length)?r.doi_tuong:[{}];
     const subjectVals=F_NV_DOITUONG.map(f=>joinSubjectField(subs,f));
-    rows.push([String(i+1),...caseVals,...subjectVals]);
-    subCounts.push(subs.length);
+    rows.push([String(i+1),...caseVals,nvMaTuyChiTietText(r),...subjectVals]);
+    subCounts.push(Math.max(subs.length,(r.ma_tuy_thu||[]).length));
   });
   return{headers,rows,subCounts};
 }
@@ -12953,7 +14340,7 @@ function exportNghiepVuExcel(title,records,period,toast){
   try{
     const{headers,rows,subCounts}=buildNghiepVuExportRows(records);
     const ws=buildSheet(`BÁO CÁO THỐNG KÊ ${title.toUpperCase()}`,period,headers,rows);
-    const fieldsAll=[null,...F_NV_VUVIEC,...F_NV_DOITUONG]; // null = cột STT
+    const fieldsAll=[null,...F_NV_VUVIEC,_NV_COL_MATUY,...F_NV_DOITUONG]; // null = cột STT
     ws["!cols"]=fieldsAll.map(f=>{
       if(!f)return{wch:6};
       if(f.type==="textarea")return{wch:38};
@@ -13066,6 +14453,7 @@ function NghiepVuFormModal({title,initial,onSave,onClose,toast}){
     return initial?{...base,...initial}:base;
   });
   const [subjects,setSubjects]=useState(()=>(initial&&initial.doi_tuong&&initial.doi_tuong.length?initial.doi_tuong:[emptyNvSubject()]));
+  const [maTuy,setMaTuy]=useState(()=>((initial&&initial.ma_tuy_thu)||[]).map(m=>({...m,_id:m._id||uid()})));
   const [errors,setErrors]=useState({});
   const [importBusy,setImportBusy]=useState(false);
   const importRef=useRef();
@@ -13107,7 +14495,20 @@ function NghiepVuFormModal({title,initial,onSave,onClose,toast}){
   };
   const handleSave=()=>{
     if(!validate())return;
-    onSave({...caseData,doi_tuong:subjects.filter(s=>String(s.ho_ten||"").trim())});
+    const subs=subjects.filter(s=>String(s.ho_ten||"").trim());
+    const ids=new Set(subs.map(s=>s._id));
+    // Giữ lại các dòng ma túy có khai báo loại hoặc khối lượng; bỏ liên kết với
+    // đối tượng đã bị xóa khỏi vụ việc (giữ nguyên dữ liệu thu giữ, chỉ bỏ tên).
+    const mt=maTuy.filter(m=>String(dv(m,"loai_ma_tuy")||"").trim()||String(m.khoi_luong||"").trim())
+      .map(m=>({...m,dt_id:ids.has(m.dt_id)?m.dt_id:"",ho_ten_snapshot:nvMaTuyTenDT(m,subs)||m.ho_ten_snapshot||""}));
+    // Điền "Trọng lượng ma túy thu giữ" của từng đối tượng nếu cán bộ chưa nhập tay
+    const subs2=subs.map(s=>{
+      if(String(s.trong_luong_thu_giu||"").trim())return s;
+      const mine=mt.filter(m=>m.dt_id===s._id);
+      if(!mine.length)return s;
+      return{...s,trong_luong_thu_giu:nvMoTaMaTuy(mine)};
+    });
+    onSave({...caseData,doi_tuong:subs2,ma_tuy_thu:mt});
   };
   const {style:dragStyle,dragHandleProps}=useDraggableModal();
 
@@ -13155,6 +14556,7 @@ function NghiepVuFormModal({title,initial,onSave,onClose,toast}){
               canRemove={subjects.length>1}
               collapsed={collapsedSet.has(i)} onToggleCollapse={()=>toggleCollapse(i)}/>
           ))}
+          <NvMaTuyThuBlock list={maTuy} setList={setMaTuy} subjects={subjects}/>
         </div>
         <div style={{padding:"12px 20px",borderTop:"1px solid #eee",display:"flex",justifyContent:"flex-end",gap:8,flexShrink:0}}>
           <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
@@ -13185,6 +14587,29 @@ function NghiepVuViewModal({rec,onClose,onEdit}){
               </div>
             ))}
           </div>
+          {(rec.ma_tuy_thu||[]).length>0&&
+            <div style={{border:"1.5px solid #bae6fd",background:"#f0f9ff",borderRadius:10,padding:"11px 14px",marginBottom:14}}>
+              <div style={{fontWeight:800,fontSize:13,color:"#0c4a6e",marginBottom:7}}>💊 Số ma túy thu giữ được ({rec.ma_tuy_thu.length} dòng)</div>
+              <table style={{width:"100%",fontSize:12.3,borderCollapse:"collapse"}}>
+                <thead><tr style={{color:"#0369a1",textAlign:"left"}}>
+                  <th style={{padding:"3px 6px",fontSize:11}}>Đối tượng</th>
+                  <th style={{padding:"3px 6px",fontSize:11}}>Loại ma túy thu giữ</th>
+                  <th style={{padding:"3px 6px",fontSize:11,textAlign:"right"}}>Khối lượng</th>
+                </tr></thead>
+                <tbody>
+                  {rec.ma_tuy_thu.map((m,i)=>(
+                    <tr key={m._id||i} style={{borderTop:"1px solid #bae6fd"}}>
+                      <td style={{padding:"4px 6px",fontWeight:600,color:"var(--navy)"}}>{nvMaTuyTenDT(m,rec.doi_tuong)||"—"}</td>
+                      <td style={{padding:"4px 6px"}}>{dv(m,"loai_ma_tuy")||"—"}</td>
+                      <td style={{padding:"4px 6px",textAlign:"right",whiteSpace:"nowrap"}}>{m.khoi_luong?`${m.khoi_luong} ${m.don_vi_tinh||"gam"}`:"—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{fontSize:11.5,color:"#0c4a6e",marginTop:6,paddingTop:6,borderTop:"1px solid #bae6fd"}}>
+                🧮 <b>Tổng:</b> {nvMoTaMaTuy(rec.ma_tuy_thu)||"—"}
+              </div>
+            </div>}
           <div style={{fontWeight:800,fontSize:13.5,color:"var(--navy)",marginBottom:10}}>👥 Đối tượng ({(rec.doi_tuong||[]).length})</div>
           {(rec.doi_tuong||[]).map((s,i)=>(
             <div key={s._id||i} style={{border:"1.5px solid #dde3f0",borderRadius:10,padding:"12px 14px",marginBottom:10,background:SUBJECT_COLORS[i%SUBJECT_COLORS.length]}}>
@@ -13193,7 +14618,7 @@ function NghiepVuViewModal({rec,onClose,onEdit}){
                 {F_NV_DOITUONG.filter(f=>f.k!=="ho_ten").map(f=>(
                   <div key={f.k} style={{gridColumn:(f.type==="textarea")?"1 / -1":undefined}}>
                     <div style={{fontSize:10.5,color:"#94a3b8",fontWeight:700}}>{f.lbl}</div>
-                    <div style={{fontSize:12.5,color:"#1a2340"}}>{dv(s,f.k)?(f.type==="date"?fmtDate(dv(s,f.k)):dv(s,f.k)):"—"}</div>
+                    <div style={{fontSize:12.5,color:"#1a2340"}}>{dv(s,f.k)?(f.k==="nam_sinh"?fmtNamSinh(s):f.type==="date"?fmtDate(dv(s,f.k)):dv(s,f.k)):"—"}</div>
                   </div>
                 ))}
               </div>
@@ -13305,6 +14730,54 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
 
   const [exportOpen,setExportOpen]=useState(false);
 
+  // ── Chèn vụ việc từ file Excel tổng hợp (chỉ áp dụng cho "Vụ việc ma túy mới") ──
+  const excelRef=useRef();
+  const [excelPreview,setExcelPreview]=useState(null);
+  const [excelBusy,setExcelBusy]=useState(false);
+  const readExcel=file=>{
+    if(!file)return;
+    if(!/\.xlsx?$/i.test(file.name)){toast("Vui lòng chọn file .xlsx / .xls","error");return;}
+    if(!window.XLSX){toast("Chưa tải được thư viện đọc Excel. Kiểm tra kết nối mạng rồi thử lại.","error");return;}
+    setExcelBusy(true);
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:true});
+        let found=null;
+        for(const sn of wb.SheetNames){
+          const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:"",raw:false,cellDates:true});
+          const hdr=ivFindHeader(aoa);
+          if(hdr){found={sn,aoa,hdr};break;}
+        }
+        if(!found){
+          toast("Không tìm thấy bảng dữ liệu phù hợp. File cần có dòng tiêu đề gồm các cột \"Ngày tiếp nhận\", \"Tội danh\", \"Đối tượng\"…","error");
+          return;
+        }
+        const res=ivBuildRowsFromSheet(found.aoa,found.hdr,data);
+        if(!res.rows.length){toast("Không có dòng dữ liệu hợp lệ nào trong sheet \""+found.sn+"\"","warning");return;}
+        setExcelPreview({...res,fileName:file.name+" – sheet \""+found.sn+"\" – "+res.rows.length+" vụ việc"});
+      }catch(err){toast("❌ Lỗi đọc file Excel: "+err.message,"error");}
+      finally{setExcelBusy(false);}
+    };
+    reader.onerror=()=>{setExcelBusy(false);toast("Không đọc được file.","error");};
+    reader.readAsArrayBuffer(file);
+  };
+  const confirmExcelImport=async selRows=>{
+    const recs=selRows.map(ivToRecord);
+    const next=[...recs,...data];
+    try{
+      await saveStore(storeKey,next);setData(next);setExcelPreview(null);
+      if(search)setSearch("");
+      const nDt=recs.reduce((a,r)=>a+(r.doi_tuong||[]).length,0);
+      if(syncTargets){
+        await runSync(next,{silent:true});
+        const nDb=countSubjectsInDiaBan(recs,diaBan);
+        toast(`✅ Đã nhập ${recs.length} vụ việc / ${nDt} đối tượng từ Excel → đã tự chuyển sang PL VỤ (PC04)`
+          +(nDb?` và ${nDb} đối tượng thuộc ${diaBan?diaBan.label:"địa bàn"} sang mục Đối tượng bị bắt trên địa bàn`:""),"success");
+      }else toast(`✅ Đã nhập ${recs.length} vụ việc / ${nDt} đối tượng từ Excel`,"success");
+    }catch(e){toast("❌ Lỗi lưu dữ liệu nhập: "+e.message,"error");}
+  };
+
   const doPwdConfirm=()=>{
     if(!pwdAction)return;
     if(pwdAction.type==="edit")setForm({mode:"edit",rec:pwdAction.rec});
@@ -13342,6 +14815,16 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
             <input className="srch" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false" name="q_6_nofill" placeholder="Tìm theo mã vụ việc / tên đối tượng / CCCD..." value={search} onChange={e=>setSearch(e.target.value)}/>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={()=>setExportOpen(true)}>📊 Xuất báo cáo thống kê</button>
+          {!isDerived&&<>
+            <input ref={excelRef} type="file" accept=".xlsx,.xls" style={{display:"none"}}
+              onChange={e=>{const f=e.target.files&&e.target.files[0];if(f)readExcel(f);e.target.value="";}}/>
+            <button className="btn btn-green btn-sm" disabled={excelBusy}
+              title="Nhập nhiều vụ việc cùng lúc từ file Excel tổng hợp tin báo (mã vụ việc, đối tượng… được tạo tự động)"
+              onClick={()=>excelRef.current&&excelRef.current.click()}>{excelBusy?"⏳ Đang đọc...":"📥 Chèn từ file Excel"}</button>
+            <button className="btn btn-sm" style={{background:"#0d9488",color:"#fff"}}
+              title="Xuất danh sách vụ việc (theo bộ lọc thời gian đang chọn) ra file Excel đúng 14 cột của bảng tổng hợp tin báo — nhập lại được vào phần mềm"
+              onClick={()=>exportVuViecToExcel(filtered,toast)}>📤 Xuất file Excel tổng hợp</button>
+          </>}
           <button className="btn btn-primary btn-sm" onClick={()=>setForm({mode:"add",rec:null})}>＋ Thêm vụ việc</button>
         </div>
       </div>
@@ -13350,6 +14833,8 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
           ℹ️ <b>Tự động chuyển dữ liệu:</b> mỗi vụ việc lưu tại đây sẽ tự chuyển sang mục <b>📁 Vụ án/Vụ việc về ma túy (PL VỤ – PC04)</b>.
           Riêng mục <b>🚔 Đối tượng bị bắt trên địa bàn</b> chỉ lấy những đối tượng có <b>Nơi thường trú / Nơi tạm trú / Nơi ở hiện tại</b> thuộc <b>{diaBan?diaBan.label:"phường (xã) của đơn vị"}</b>
           {" "}(lấy theo <b>Tên đơn vị</b> tại Cấu hình hệ thống — đổi sang phường/xã khác thì việc bóc tách cũng đổi theo). Đối tượng ở phường/xã khác sẽ không được lấy.
+          <div style={{marginTop:5}}>📥 <b>Chèn từ file Excel:</b> nhập hàng loạt từ bảng tổng hợp tin báo — <b>mã vụ việc</b> tạo tự động dạng <b>MT + ngày tháng năm</b> theo cột “Ngày tiếp nhận” (VD 09/09/2026 → <b>MT090926</b>); <b>Tội danh</b> → Loại vụ việc; <b>Nội dung tố giác</b> → Nội dung vụ việc; <b>Tên cá nhân, cơ quan, tổ chức cung cấp</b> → Đơn vị bắt/mời (viết tắt “CAP Tân Bình”, “Tuần tra CAP”… tự viết đầy đủ thành “Công an phường Tân Bình”); <b>CBTH</b> → Cán bộ làm trực tiếp; <b>Kết quả giải quyết</b> → Kết quả xử lý; cột <b>Đối tượng</b> được tách theo “1/ 1. 2/ 2. …” thành từng đối tượng (họ tên, năm sinh, HKTT, nơi ở hiện tại); cột <b>Ma tuý thu</b> → mục <b>💊 Số ma túy thu giữ được</b>; cột <b>Mua bán qua không gian mạng</b>, <b>Nơi xảy ra</b>, <b>Tên nguồn tin</b>, <b>ghi chú</b> cũng được lấy vào. Có bảng xem trước để kiểm tra, sửa mã và ngày trước khi lưu.</div>
+          <div style={{marginTop:5}}>📤 <b>Xuất file Excel tổng hợp:</b> xuất ngược danh sách vụ việc (theo bộ lọc thời gian đang chọn) ra file Excel <b>đúng 14 cột</b> của bảng tổng hợp tin báo — file này nhập ngược lại vào phần mềm được.</div>
           {!diaBan&&<div style={{color:"#b45309",fontWeight:700,marginTop:5}}>⚠️ Chưa nhận diện được phường/xã từ Tên đơn vị hiện tại ("{CONFIG.donVi}"). Vui lòng vào Cấu hình hệ thống nhập dạng "Công an phường Tân Bình" / "Công an xã ..." để lọc đúng đối tượng.</div>}
         </div>}
       {isDerived&&
@@ -13367,17 +14852,8 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
               <th style={{minWidth:200}}>Loại vụ việc</th>
               <th style={{minWidth:200}}>Nội dung vụ việc</th>
               <th style={{minWidth:160}}>Đối tượng</th>
-              {storeKey===KEYS.bat_dia_ban?(
-                <>
-                  <th style={{minWidth:160}}>Đơn vị bắt/mời</th>
-                  <th style={{minWidth:110}}>Ngày bắt/mời</th>
-                </>
-              ):(
-                <>
-                  <th style={{minWidth:110}}>Ngày bắt/mời</th>
-                  <th style={{minWidth:120}}>ĐTV thụ lý chính</th>
-                </>
-              )}
+              <th style={{minWidth:160}}>Đơn vị bắt/mời</th>
+              <th style={{minWidth:130}}>Cán bộ làm trực tiếp</th>
               <th style={{width:120,textAlign:"center"}}>Thao tác</th>
             </tr></thead>
             <tbody>
@@ -13404,17 +14880,8 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
                         {(r.doi_tuong||[]).map((s,si)=><span key={si} style={{fontWeight:600,color:"var(--navy)"}}>{s.ho_ten||"—"}</span>)}
                       </div>}
                   </td>
-                  {storeKey===KEYS.bat_dia_ban?(
-                    <>
-                      <td>{r.don_vi_bat_moi||"—"}</td>
-                      <td><DateChip val={r.ngay_bat_moi}/></td>
-                    </>
-                  ):(
-                    <>
-                      <td><DateChip val={r.ngay_bat_moi}/></td>
-                      <td>{r.dtv_thu_ly_chinh||"—"}</td>
-                    </>
-                  )}
+                  <td>{r.don_vi_bat_moi||"—"}</td>
+                  <td>{r.can_bo_lam_truc_tiep||"—"}</td>
                   <td><div className="actions">
                     <button className="btn btn-sm btn-icon act-view" title="Xem chi tiết" onClick={()=>setViewRec(r)}>👁</button>
                     <button className="btn btn-sm btn-icon act-edit" title="Sửa (yêu cầu mật khẩu)" onClick={()=>setPwdAction({type:"edit",rec:r})}>✏️</button>
@@ -13446,6 +14913,7 @@ function NghiepVuPage({title,icon,storeKey,data,setData,dateRange,toast,syncTarg
       {viewRec&&<NghiepVuViewModal rec={viewRec} onClose={()=>setViewRec(null)} onEdit={r=>{setViewRec(null);setPwdAction({type:"edit",rec:r});}}/>}
       {pwdAction&&<EditPwdModal onConfirm={doPwdConfirm} onClose={()=>setPwdAction(null)}/>}
       {exportOpen&&<NghiepVuExportModal title={title} data={data} dateRange={dateRange} onClose={()=>setExportOpen(false)} toast={toast}/>}
+      {excelPreview&&<NvExcelImportModal preview={excelPreview} onClose={()=>setExcelPreview(null)} onConfirm={confirmExcelImport}/>}
     </div>
   );
 }
@@ -13683,7 +15151,7 @@ function App(){
           <img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyNC4yLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgeD0iMHB4IiB5PSIwcHgiDQoJIHZpZXdCb3g9IjAgMCA2MjMuNiA1MTAuMiIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgNjIzLjYgNTEwLjI7IiB4bWw6c3BhY2U9InByZXNlcnZlIj4NCjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+DQoJLnN0MHtmaWxsOiNGRkYyMDA7fQ0KCS5zdDF7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjg1MDY7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDJ7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDowLjk3NTQ7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDN7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjc2NDc7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDR7ZmlsbDojMEI5NDQ2O3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjc2NDc7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDV7ZmlsbDpub25lO3N0cm9rZTojMDBBRUVGO3N0cm9rZS13aWR0aDowLjE0NDY7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDZ7ZmlsbDojRUQxQzI0O30NCgkuc3Q3e2NsaXAtcGF0aDp1cmwoI1NWR0lEXzJfKTt9DQoJLnN0OHtmaWxsOiM5ODFCMUU7fQ0KCS5zdDl7ZmlsbDojRkZGMjAwO3N0cm9rZTojOTgxQjFFO3N0cm9rZS13aWR0aDowLjY5Njc7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDEwe2ZpbGw6I0ZGRjIwMDtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6Mi45NDcxO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QxMXtmaWxsOiNGRkYyMDA7c3Ryb2tlOiNFRDFDMjQ7c3Ryb2tlLXdpZHRoOjEuMDA4NTtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MTJ7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjc4NztzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MTN7ZmlsbDpub25lO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjc4NztzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MTR7ZmlsbDpub25lO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjg1MDY7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDE1e2ZpbGw6bm9uZTtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6My4wNjU3O3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QxNntmaWxsOm5vbmU7c3Ryb2tlOiNFRDFDMjQ7c3Ryb2tlLXdpZHRoOjMuNjIzMTtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MTd7ZmlsbDpub25lO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDozLjM0NDQ7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDE4e2ZpbGw6I0ZGRjIwMDtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6My4wNjU3O3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QxOXtmaWxsOm5vbmU7c3Ryb2tlOiNFRDFDMjQ7c3Ryb2tlLXdpZHRoOjEuMzkzNTtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MjB7ZmlsbDpub25lO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoxLjY3MjI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDIxe2ZpbGw6bm9uZTtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6Mi4yMjk2O3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QyMntmaWxsOm5vbmU7c3Ryb2tlOiNFRDFDMjQ7c3Ryb2tlLXdpZHRoOjEuOTUwOTtzdHJva2UtbGluZWNhcDpyb3VuZDtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0MjN7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoxLjM5MzU7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDI0e2ZpbGw6bm9uZTtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6MC45ODMyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QyNXtjbGlwLXBhdGg6dXJsKCNTVkdJRF80Xyk7ZmlsbDojRkZGMjAwO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjA5MDI7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDI2e2ZpbGw6bm9uZTtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6Mi43NjQ3O3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCgkuc3QyN3tmaWxsOiNGRkYyMDA7c3Ryb2tlOiNFRDFDMjQ7c3Ryb2tlLXdpZHRoOjIuMDkwMjtzdHJva2UtbWl0ZXJsaW1pdDoxMDt9DQoJLnN0Mjh7ZmlsbDpub25lO3N0cm9rZTojRUQxQzI0O3N0cm9rZS13aWR0aDoyLjA5MDI7c3Ryb2tlLWxpbmVjYXA6cm91bmQ7c3Ryb2tlLW1pdGVybGltaXQ6MTA7fQ0KCS5zdDI5e2ZpbGw6I0ZGRjIwMDtzdHJva2U6I0VEMUMyNDtzdHJva2Utd2lkdGg6MS42NzIyO3N0cm9rZS1saW5lY2FwOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEwO30NCjwvc3R5bGU+DQo8Zz4NCgk8Y2lyY2xlIGNsYXNzPSJzdDAiIGN4PSIzMTEuOCIgY3k9IjIzOS40IiByPSIxODEuOSIvPg0KCTxnPg0KCQk8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTYyLjUsMTMzLjdjLTMuMiw1LTE1LjEsMjQuMi0xNC4yLDI5LjljMCwwLTEwLjktMTYuOS0xMC45LTM0LjJzMTQuNi0xNi41LDE0LjYtMTYuNXMxNi45LDEsMTEuOCwxOA0KCQkJQzU2My41LDEzMS44LDU2MywxMzIuOCw1NjIuNSwxMzMuN3oiLz4NCgkJPGNpcmNsZSBjbGFzcz0ic3QyIiBjeD0iNTUxLjEiIGN5PSIxMjYuNCIgcj0iMTIuNyIvPg0KCTwvZz4NCgk8Zz4NCgkJPHBhdGggY2xhc3M9InN0MSIgZD0iTTYxLjIsMTMzLjdjMy4yLDUsMTUuMSwyNC4yLDE0LjIsMjkuOWMwLDAsMTAuOS0xNi45LDEwLjktMzQuMnMtMTQuNi0xNi41LTE0LjYtMTYuNXMtMTYuOSwxLTExLjgsMTgNCgkJCUM2MC4xLDEzMS44LDYwLjYsMTMyLjgsNjEuMiwxMzMuN3oiLz4NCgkJPGNpcmNsZSBjbGFzcz0ic3QyIiBjeD0iNzIuNiIgY3k9IjEyNi40IiByPSIxMi43Ii8+DQoJPC9nPg0KCTxjaXJjbGUgY2xhc3M9InN0MyIgY3g9IjMxMS44IiBjeT0iMjI2LjYiIHI9IjE4MS45Ii8+DQoJPGNpcmNsZSBjbGFzcz0ic3Q0IiBjeD0iMzExLjgiIGN5PSIyMjYuNiIgcj0iMTcxLjgiLz4NCgk8Y2lyY2xlIGNsYXNzPSJzdDMiIGN4PSIzMTEuOCIgY3k9IjIyNi42IiByPSI5NC43Ii8+DQoJPGNpcmNsZSBjbGFzcz0ic3Q1IiBjeD0iMzExLjgiIGN5PSIyMjYuNiIgcj0iODUuNyIvPg0KCTxnPg0KCQk8Y2lyY2xlIGNsYXNzPSJzdDYiIGN4PSIzMTEuOCIgY3k9IjIyNi42IiByPSI4NS43Ii8+DQoJCTxnPg0KCQkJPGRlZnM+DQoJCQkJPGNpcmNsZSBpZD0iU1ZHSURfMV8iIGN4PSIzMTEuOCIgY3k9IjIyNi42IiByPSI4NS43Ii8+DQoJCQk8L2RlZnM+DQoJCQk8Y2xpcFBhdGggaWQ9IlNWR0lEXzJfIj4NCgkJCQk8dXNlIHhsaW5rOmhyZWY9IiNTVkdJRF8xXyIgIHN0eWxlPSJvdmVyZmxvdzp2aXNpYmxlOyIvPg0KCQkJPC9jbGlwUGF0aD4NCgkJCTxnIGNsYXNzPSJzdDciPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzA5LjUsMzE5LjQgMzE0LjEsMzE5LjQgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzI1LjcsMzE4LjMgMzMwLjIsMzE3LjYgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzQxLjQsMzE0LjUgMzQ1LjcsMzEzIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDM1Ni4yLDMwOC4xIDM2MC4yLDMwNS44IAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDM2OS43LDI5OS4xIDM3My4yLDI5Ni4yIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDM4MS40LDI4OCAzODQuNCwyODQuNSAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzOTEsMjc0LjkgMzkzLjMsMjcxIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDM5OC4yLDI2MC41IDM5OS44LDI1Ni4yIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDQwMi44LDI0NC45IDQwMy42LDI0MC40IAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDQwNC42LDIyOC45IDQwNC42LDIyNC4zIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDQwMy42LDIxMi43IDQwMi44LDIwOC4yIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDM5OS44LDE5NyAzOTguMiwxOTIuNyAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzOTMuMywxODIuMiAzOTEsMTc4LjIgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzg0LjQsMTY4LjcgMzgxLjQsMTY1LjIgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzczLjIsMTU3IDM2OS43LDE1NCAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzNjAuMiwxNDcuNCAzNTYuMiwxNDUuMSAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzNDUuNywxNDAuMiAzNDEuNCwxMzguNiAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzMzAuMiwxMzUuNiAzMjUuNywxMzQuOCAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAzMTQuMSwxMzMuOCAzMDkuNSwxMzMuOCAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyOTcuOSwxMzQuOCAyOTMuNCwxMzUuNiAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyODIuMiwxMzguNiAyNzcuOSwxNDAuMiAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyNjcuNCwxNDUuMSAyNjMuNCwxNDcuNCAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyNTMuOSwxNTQgMjUwLjQsMTU3IAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDI0Mi4yLDE2NS4yIDIzOS4zLDE2OC43IAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDIzMi42LDE3OC4yIDIzMC4zLDE4Mi4yIAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDIyNS40LDE5Mi43IDIyMy44LDE5NyAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyMjAuOCwyMDguMiAyMjAsMjEyLjcgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMjE5LDIyNC4zIDIxOSwyMjguOSAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyMjAsMjQwLjQgMjIwLjgsMjQ0LjkgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMjIzLjgsMjU2LjIgMjI1LjQsMjYwLjUgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMjMwLjMsMjcxIDIzMi42LDI3NC45IAkJCQkiLz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMxMS44LDIyNi42IDIzOS4zLDI4NC41IDI0Mi4yLDI4OCAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyNTAuNCwyOTYuMiAyNTMuOSwyOTkuMSAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyNjMuNCwzMDUuOCAyNjcuNCwzMDguMSAJCQkJIi8+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIzMTEuOCwyMjYuNiAyNzcuOSwzMTMgMjgyLjIsMzE0LjUgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMjkzLjQsMzE3LjYgMjk3LjksMzE4LjMgCQkJCSIvPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzExLjgsMjI2LjYgMzA5LjUsMzE5LjQgMzE0LjEsMzE5LjQgCQkJCSIvPg0KCQkJPC9nPg0KCQk8L2c+DQoJPC9nPg0KCTxnPg0KCQk8cG9seWdvbiBjbGFzcz0ic3Q5IiBwb2ludHM9IjMxMS44LDE3Mi44IDMyNi40LDIxMC45IDM2NC40LDIxMC45IDMzNC4xLDIzNy45IDM0OS44LDI3Ny42IDMxMS44LDI1NC4yIDI3My44LDI3Ny42IDI4OS41LDIzNy45IA0KCQkJMjU5LjIsMjEwLjkgMjk3LjIsMjEwLjkgCQkiLz4NCgkJPGc+DQoJCQk8cmVjdCB4PSIzMTEuMyIgeT0iMTczLjciIGNsYXNzPSJzdDgiIHdpZHRoPSIxIiBoZWlnaHQ9IjgwLjciLz4NCgkJCQ0KCQkJCTxyZWN0IHg9IjMwNS41IiB5PSIyMDEuOCIgdHJhbnNmb3JtPSJtYXRyaXgoMC43OTc3IC0wLjYwMyAwLjYwMyAwLjc5NzcgLTY1LjcxNTUgMjI3LjI1ODUpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjE5LjYiLz4NCgkJCTxnPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMzQ5LjcsMjc2LjkgMzQ5LDI3Ny40IDI5Ni45LDIxMC45IDI5Ny42LDIxMC40IAkJCQkiLz4NCgkJCQk8cmVjdCB4PSIzMTYuMiIgeT0iMjM1LjUiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMjEuNyIvPg0KCQkJCTxyZWN0IHg9IjMyMSIgeT0iMjQxLjUiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTguNiIvPg0KCQkJCTxyZWN0IHg9IjMyNS4yIiB5PSIyNDYuNyIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxNiIvPg0KCQkJCTxyZWN0IHg9IjMyOS4zIiB5PSIyNTIiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTMuMiIvPg0KCQkJCTxyZWN0IHg9IjMzMy4yIiB5PSIyNTciIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTAuNyIvPg0KCQkJCTxyZWN0IHg9IjMzNy4xIiB5PSIyNjIuMSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSI4Ii8+DQoJCQkJPHJlY3QgeD0iMzQwLjkiIHk9IjI2Ni44IiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjUuNSIvPg0KCQkJPC9nPg0KCQkJPGc+DQoJCQkJPHBvbHlnb24gY2xhc3M9InN0OCIgcG9pbnRzPSIyNzQsMjc2LjggMjc0LjcsMjc3LjMgMzI2LjksMjEwLjggMzI2LjIsMjEwLjMgCQkJCSIvPg0KCQkJCQ0KCQkJCQk8cmVjdCB4PSIzMDYuNiIgeT0iMjM1LjQiIHRyYW5zZm9ybT0ibWF0cml4KC0xIC01LjYzMDY2NGUtMTEgNS42MzA2NjRlLTExIC0xIDYxNC4xMjg4IDQ5Mi40Njk2KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIyMS43Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjMwMS45IiB5PSIyNDEuNCIgdHJhbnNmb3JtPSJtYXRyaXgoLTEgLTUuNDIyMTE5ZS0xMSA1LjQyMjExOWUtMTEgLTEgNjA0LjY2NTYgNTAxLjM2OTQpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjE4LjYiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMjk3LjciIHk9IjI0Ni42IiB0cmFuc2Zvcm09Im1hdHJpeCgtMSAtNC4xNzA4NTRlLTExIDQuMTcwODU0ZS0xMSAtMSA1OTYuMjkyNSA1MDkuMjc3MSkiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTYiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMjkzLjYiIHk9IjI1MiIgdHJhbnNmb3JtPSJtYXRyaXgoLTEgLTMuOTYyMzA5ZS0xMSAzLjk2MjMwOWUtMTEgLTEgNTg4LjA3NDMgNTE3LjA2KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxMy4yIi8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI4OS43IiB5PSIyNTYuOSIgdHJhbnNmb3JtPSJtYXRyaXgoLTEgLTQuMTcwODU0ZS0xMSA0LjE3MDg1NGUtMTEgLTEgNTgwLjI5MDYgNTI0LjQ3NDkpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjEwLjciLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMjg1LjgiIHk9IjI2MiIgdHJhbnNmb3JtPSJtYXRyaXgoLTEgLTUuNjMwNjY0ZS0xMSA1LjYzMDY2NGUtMTEgLTEgNTcyLjQyNTIgNTMyLjAwMjQpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjgiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMjgyIiB5PSIyNjYuNyIgdHJhbnNmb3JtPSJtYXRyaXgoLTEgLTQuMTcwODU0ZS0xMSA0LjE3MDg1NGUtMTEgLTEgNTY0LjkwNzggNTM4Ljk5NzQpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjUuNSIvPg0KCQkJPC9nPg0KCQkJDQoJCQkJPHJlY3QgeD0iMzA2LjUiIHk9IjE5Ni43IiB0cmFuc2Zvcm09Im1hdHJpeCgwLjc5NzcgLTAuNjAzIDAuNjAzIDAuNzk3NyAtNjEuNDQ0IDIyNi41MTI2KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxNi4yIi8+DQoJCQkNCgkJCQk8cmVjdCB4PSIzMDcuMyIgeT0iMTkyLjYiIHRyYW5zZm9ybT0ibWF0cml4KDAuNzk3NyAtMC42MDMgMC42MDMgMC43OTc3IC01Ny45MDU1IDIyNS44OTQyKSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxMy40Ii8+DQoJCQkNCgkJCQk8cmVjdCB4PSIzMDguMiIgeT0iMTg4LjIiIHRyYW5zZm9ybT0ibWF0cml4KDAuNzk3NyAtMC42MDMgMC42MDMgMC43OTc3IC01NC4yMTgzIDIyNS4yNTA0KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxMC41Ii8+DQoJCQk8Zz4NCgkJCQk8cG9seWdvbiBjbGFzcz0ic3Q4IiBwb2ludHM9IjMzNC40LDIzNy40IDMzNC4xLDIzOC40IDI1OS43LDIxMS42IDI2MC4xLDIxMC43IAkJCQkiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMjkyLjkiIHk9IjIyMC40IiB0cmFuc2Zvcm09Im1hdHJpeCgtMC4zODE2IC0wLjkyNDMgMC45MjQzIC0wLjM4MTYgMTkyLjc4MjUgNTg4Ljc1OTgpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjE5Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI4Ny4yIiB5PSIyMTguOSIgdHJhbnNmb3JtPSJtYXRyaXgoLTAuMzgxNiAtMC45MjQzIDAuOTI0MyAtMC4zODE2IDE4Ny44NDA4IDU3OS4xMDI4KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxNS43Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI4Mi4xIiB5PSIyMTcuMyIgdHJhbnNmb3JtPSJtYXRyaXgoLTAuMzgxNiAtMC45MjQzIDAuOTI0MyAtMC4zODE2IDE4My41MTE2IDU3MC40MTIpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjEzIi8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI3Ny45IiB5PSIyMTYuMiIgdHJhbnNmb3JtPSJtYXRyaXgoLTAuMzgxNiAtMC45MjQzIDAuOTI0MyAtMC4zODE2IDE3OS43OTk3IDU2My4yODY5KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxMC41Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI3My44IiB5PSIyMTUiIHRyYW5zZm9ybT0ibWF0cml4KC0wLjM4MTYgLTAuOTI0MyAwLjkyNDMgLTAuMzgxNiAxNzYuMjgyOCA1NTYuNDAwMykiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iOC40Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjI2OS42IiB5PSIyMTMuOSIgdHJhbnNmb3JtPSJtYXRyaXgoLTAuMzgxNiAtMC45MjQzIDAuOTI0MyAtMC4zODE2IDE3Mi42MjE1IDU0OS4zOTcxKSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSI2LjEiLz4NCgkJCTwvZz4NCgkJCTxnPg0KCQkJCTxwb2x5Z29uIGNsYXNzPSJzdDgiIHBvaW50cz0iMjg5LjIsMjM3LjQgMjg5LjUsMjM4LjQgMzYzLjksMjExLjYgMzYzLjUsMjEwLjcgCQkJCSIvPg0KCQkJCQ0KCQkJCQk8cmVjdCB4PSIzMjkuOCIgeT0iMjIwLjQiIHRyYW5zZm9ybT0ibWF0cml4KDAuMzgxNiAtMC45MjQzIDAuOTI0MyAwLjM4MTYgLTguMjYyMSA0NDcuNDQwMikiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTkiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMzM1LjUiIHk9IjIxOC45IiB0cmFuc2Zvcm09Im1hdHJpeCgwLjM4MTYgLTAuOTI0MyAwLjkyNDMgMC4zODE2IC0xLjgwMTcgNDUwLjc0NjEpIiBjbGFzcz0ic3Q4IiB3aWR0aD0iMC45IiBoZWlnaHQ9IjE1LjciLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMzQwLjYiIHk9IjIxNy4zIiB0cmFuc2Zvcm09Im1hdHJpeCgwLjM4MTYgLTAuOTI0MyAwLjkyNDMgMC4zODE2IDQuMDEyNCA0NTMuNjQyMykiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iMTMiLz4NCgkJCQkNCgkJCQkJPHJlY3QgeD0iMzQ0LjkiIHk9IjIxNi4yIiB0cmFuc2Zvcm09Im1hdHJpeCgwLjM4MTYgLTAuOTI0MyAwLjkyNDMgMC4zODE2IDguNzc5IDQ1Ni4xMjU2KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSIxMC41Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjM0OC45IiB5PSIyMTUiIHRyYW5zZm9ybT0ibWF0cml4KDAuMzgxNiAtMC45MjQzIDAuOTI0MyAwLjM4MTYgMTMuMzg2MSA0NTguNDc4MykiIGNsYXNzPSJzdDgiIHdpZHRoPSIwLjkiIGhlaWdodD0iOC40Ii8+DQoJCQkJDQoJCQkJCTxyZWN0IHg9IjM1My4xIiB5PSIyMTMuOSIgdHJhbnNmb3JtPSJtYXRyaXgoMC4zODE2IC0wLjkyNDMgMC45MjQzIDAuMzgxNiAxOC4wNzEyIDQ2MC45Mjc3KSIgY2xhc3M9InN0OCIgd2lkdGg9IjAuOSIgaGVpZ2h0PSI2LjEiLz4NCgkJCTwvZz4NCgkJPC9nPg0KCTwvZz4NCgk8Zz4NCgkJPHBhdGggY2xhc3M9InN0MTAiIGQ9Ik02MywzNzYuM2M1LjcsMi4yLDI3LjMsMTAuOSwzMC4xLDE2LjJjMCwwLTEuMy0yMC43LTExLjktMzUuMlM1OSwzNTIuNSw1OSwzNTIuNXMtMTMuNSwxMS4yLDEuMSwyMi4zDQoJCQlDNjEsMzc1LjQsNjIsMzc1LjksNjMsMzc2LjN6Ii8+DQoJCTxjaXJjbGUgY2xhc3M9InN0MTEiIGN4PSI2OC4xIiBjeT0iMzYzLjMiIHI9IjEzLjEiLz4NCgk8L2c+DQoJPGc+DQoJCTxwYXRoIGNsYXNzPSJzdDEwIiBkPSJNNDYuMSwzMjUuMWM2LjEsMC4zLDI5LjQsMS45LDMzLjcsNmMwLDAtNy43LTE5LjMtMjIuMi0yOS43Yy0xNC42LTEwLjQtMjIuNiwyLjMtMjIuNiwyLjNzLTkuMywxNC44LDgsMjAuOA0KCQkJQzQzLjksMzI0LjksNDUsMzI1LjEsNDYuMSwzMjUuMXoiLz4NCgkJPGNpcmNsZSBjbGFzcz0ic3QxMSIgY3g9IjQ2LjgiIGN5PSIzMTEuMSIgcj0iMTMuMSIvPg0KCTwvZz4NCgk8cGF0aCBjbGFzcz0ic3QxMiIgZD0iTTIxNS44LDIxLjZjMCwwLTQzLjMsMS42LTgwLDQxLjNzLTIyLjMsNzAuMi0yMSw3OC44YzAsMCwzNy42LTEuNCw3MC45LTQxLjFTMjE1LjgsMjEuNiwyMTUuOCwyMS42eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDEzIiBkPSJNMTc2LjUsNjIuNGMwLDAtNDEsMTguNy0zNy44LDUwLjdDMTM4LjcsMTEzLDE3NC40LDEwMS4xLDE3Ni41LDYyLjR6Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSIyMDUuOSIgeTE9IjMxLjciIHgyPSIxODkuMiIgeTI9IjQ5LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjE4MSIgeTE9IjQxLjYiIHgyPSIxNzQuMyIgeTI9IjU1LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjE2OC45IiB5MT0iNDcuOCIgeDI9IjE2MS44IiB5Mj0iNjMuMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iMTU1LjQiIHkxPSI1OS4yIiB4Mj0iMTQ4LjYiIHkyPSI3NS40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSIxMzciIHkxPSI3Ni4yIiB4Mj0iMTM3IiB5Mj0iOTIuNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iMTI2LjQiIHkxPSI4NS44IiB4Mj0iMTI2LjQiIHkyPSIxMDIiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjE4NC41IiB5MT0iNjEuMSIgeDI9IjIwMi4yIiB5Mj0iNTcuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iMTg0LjUiIHkxPSI2OS45IiB4Mj0iMTk4LjQiIHkyPSI2Ni41Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSIxNzcuNiIgeTE9Ijc5LjYiIHgyPSIxOTMuMSIgeTI9Ijc4LjciLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjE3MS42IiB5MT0iODkiIHgyPSIxODciIHkyPSI4OSIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iMTY1LjgiIHkxPSI5Ny40IiB4Mj0iMTgxLjgiIHkyPSI5Ny40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSIxNjEuOCIgeTE9IjEwNi4yIiB4Mj0iMTczLjciIHkyPSIxMDYuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iMTUzLjIiIHkxPSIxMTQuNyIgeDI9IjE2Ni4zIiB5Mj0iMTE0LjciLz4NCgk8cGF0aCBjbGFzcz0ic3QxIiBkPSJNMTM2LjgsMTAxLjVjMCwwLTQwLDE5LTU4LjUsNzEuMXM3LjMsNzQuOSwxMi4xLDgyLjVjMCwwLDM0LjgtMTYuNSw1MC4xLTY3LjJTMTM2LjgsMTAxLjUsMTM2LjgsMTAxLjV6Ii8+DQoJPHBhdGggY2xhc3M9InN0MTQiIGQ9Ik0xMTYuMywxNTUuN2MwLDAtMzEsMzQuMS0xNS4xLDYyLjhDMTAxLjIsMjE4LjUsMTI5LjksMTkyLjksMTE2LjMsMTU1Ljd6Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxMzEuNiIgeTE9IjExNSIgeDI9IjEyMyIgeTI9IjEzOC4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxMTIuMSIgeTE9IjEzNC40IiB4Mj0iMTExLjUiIHkyPSIxNTAiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjEwMy4zIiB5MT0iMTQ1IiB4Mj0iMTAyLjgiIHkyPSIxNjIuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iOTUuMiIgeTE9IjE2MS4yIiB4Mj0iOTUuNCIgeTI9IjE3OS4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI4NC43IiB5MT0iMTg0LjYiIHgyPSI5MS4zIiB5Mj0iMjAwLjEiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9Ijc4LjYiIHkxPSIxOTcuOSIgeDI9Ijg1LjIiIHkyPSIyMTMuMSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iMTIzLjMiIHkxPSIxNTEuMiIgeDI9IjEzOC40IiB5Mj0iMTQwLjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjEyNi45IiB5MT0iMTU5LjUiIHgyPSIxMzguNiIgeTI9IjE1MC43Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxMjQuMyIgeTE9IjE3MS40IiB4Mj0iMTM4LjUiIHkyPSIxNjQuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iMTIyLjQiIHkxPSIxODIuNiIgeDI9IjEzNi45IiB5Mj0iMTc2LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjEyMC40IiB5MT0iMTkyLjkiIHgyPSIxMzUuNCIgeTI9IjE4Ni40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxMjAuMSIgeTE9IjIwMi43IiB4Mj0iMTMxLjQiIHkyPSIxOTcuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iMTE1LjUiIHkxPSIyMTQuMiIgeDI9IjEyNy44IiB5Mj0iMjA4LjkiLz4NCgk8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNTEuNCwxNDIuMmMwLDAtMjMuOCwzNy40LTExLjgsOTEuM3M0Niw1OS42LDU0LjEsNjMuNWMwLDAsMjAuNy0zMi41LDYuNy04My42UzUxLjQsMTQyLjIsNTEuNCwxNDIuMnoiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTYyLjgsMTk5LjFjMCwwLTguMSw0NS40LDIwLjYsNjEuM0M4My40LDI2MC4zLDk0LjEsMjIzLjQsNjIuOCwxOTkuMXoiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU0LjEiIHkxPSIxNTYuNSIgeDI9IjU5LjMiIHkyPSIxODAuOCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDgiIHkxPSIxODMuMiIgeDI9IjU1LjciIHkyPSIxOTYuOCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDYuMSIgeTE9IjE5NyIgeDI9IjU1IiB5Mj0iMjEyIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI0Ny45IiB5MT0iMjE1IiB4Mj0iNTcuNiIgeTI9IjIzMC4xIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MS40IiB5MT0iMjQwLjQiIHgyPSI2NS4yIiB5Mj0iMjQ5LjkiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjUzLjQiIHkxPSIyNTQuOSIgeDI9IjY2LjkiIHkyPSIyNjQuMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNjYuNCIgeTE9IjE5MS41IiB4Mj0iNzMuNCIgeTI9IjE3NC40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI3My44IiB5MT0iMTk2LjciIHgyPSI3OSIgeTI9IjE4MyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNzgiIHkxPSIyMDguMSIgeDI9Ijg2LjIiIHkyPSIxOTQuNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iODIuMyIgeTE9IjIxOC42IiB4Mj0iOTEuMyIgeTI9IjIwNS43Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI4NiIgeTE9IjIyOC40IiB4Mj0iOTUuMyIgeTI9IjIxNC45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI5MS4xIiB5MT0iMjM2LjkiIHgyPSI5OCIgeTI9IjIyNi45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI5My4yIiB5MT0iMjQ5LjEiIHgyPSIxMDAuOSIgeTI9IjIzOCIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0xMjMsMjEyYzAsMC02LDExMy40LDg0LjcsMjAwLjNsLTExLjUsMzYuMmMwLDAtMTAzLTU5LjUtMTI2LjMtMTM2LjFDNDgsMjQwLjMsODYsMjE1LjQsMTIzLDIxMnoiLz4NCgk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMTE1LjUsMjk3LjljMCwwLTMuMiw1My40LDYyLjgsMTI1LjJsNC4xLTQuM0MxODIuNCw0MTguOCwxMTguNCwzMzYuOSwxMTUuNSwyOTcuOXoiLz4NCgk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNOTcuOSwyODAuM2MwLDAtMy43LDYwLjcsNTQuNSwxMzEuN2w0LjEtNC4zQzE1Ni41LDQwNy43LDExNi43LDM2MS42LDk3LjksMjgwLjN6Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxNzYiIHkxPSIzODQuMiIgeDI9IjE3Ni42IiB5Mj0iMzk3LjgiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjE2OC41IiB5MT0iMzkxIiB4Mj0iMTY5LjkiIHkyPSIzOTUuMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iMTY3LjIiIHkxPSIzODEuMSIgeDI9IjE2Ny45IiB5Mj0iMzg2LjUiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjE2NS42IiB5MT0iMzY3LjQiIHgyPSIxNjYuNCIgeTI9IjM3NS4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxNTcuOCIgeTE9IjM2Ny40IiB4Mj0iMTU4LjUiIHkyPSIzODYuNSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iMTUwLjYiIHkxPSIzNDkuOSIgeDI9IjE1MC42IiB5Mj0iMzY2Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxNDEuMSIgeTE9IjMyNiIgeDI9IjEzNy45IiB5Mj0iMzQzLjIiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjEyOC43IiB5MT0iMjkwLjgiIHgyPSIxMjQuNCIgeTI9IjMxMC4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIxMjYuNSIgeTE9IjI4MS41IiB4Mj0iMTE5IiB5Mj0iMjk5LjgiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjExOSIgeTE9IjI2MC4zIiB4Mj0iMTExLjEiIHkyPSIyNzkiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9Ijg2LjgiIHkxPSIyMzIuOSIgeDI9IjkzLjIiIHkyPSIyNTkuMSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iODEuOSIgeTE9IjI1MC4yIiB4Mj0iOTAiIHkyPSIyNjUuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNjguMyIgeTE9IjI2OS41IiB4Mj0iODkiIHkyPSIyOTMuNSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNjkuMyIgeTE9IjI4MS41IiB4Mj0iODkiIHkyPSIzMDMuMiIvPg0KCTxwYXRoIGNsYXNzPSJzdDE0IiBkPSJNNzAuNywyOTYuMWMwLDAsMTEuNSwxMywxOS4zLDE2LjIiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTcxLjcsMzA4LjhjMCwwLDExLjYsMTAuMywyMS41LDE0LjQiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTgwLjMsMzI1LjRjMCwwLDMuNiw2LjEsMjEuMywxNC4yIi8+DQoJPHBhdGggY2xhc3M9InN0MTQiIGQ9Ik04My45LDMzN2MwLDAsOC4zLDkuMywyMS4zLDEyLjkiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTkyLjEsMzUyLjFjMCwwLDEwLjksOS43LDIwLjgsMTIuOSIvPg0KCTxwYXRoIGNsYXNzPSJzdDE0IiBkPSJNMTAzLjIsMzY2YzAsMCw4LjQsOS44LDIxLjIsMTMuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNzYuMiIgeTE9IjI2Mi45IiB4Mj0iODYuOCIgeTI9IjI3Ni44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI5OS4yIiB5MT0iMjMwLjkiIHgyPSI5Ny45IiB5Mj0iMjQ2LjciLz4NCgk8bGluZSBjbGFzcz0ic3QxNiIgeDE9IjEzMy42IiB5MT0iMzAzLjkiIHgyPSIxMjkuOCIgeTI9IjMyMS4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTYiIHgxPSIxMjIuMiIgeTE9IjI3Mi4zIiB4Mj0iMTE0LjEiIHkyPSIyODkuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE2IiB4MT0iMTE3LjciIHkxPSIyNDEuNiIgeDI9IjEwNS4yIiB5Mj0iMjcxLjciLz4NCgk8bGluZSBjbGFzcz0ic3QxNiIgeDE9IjExNyIgeTE9IjIxOS43IiB4Mj0iMTAwLjkiIHkyPSIyNTQuOSIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0xOTguNiw0MjNjMCwwLTAuMi0wLjEtMC41LTAuM2MtNC44LTMtNDQuNi0yNy4zLTczLjgtMzMuOGMtMzEuMS02LjktODYuMi0zLjItOTAuMS0zLjJzLTIwLjYtOS41LTIwLjYtOS41DQoJCXM0LjksMjguNCwyOS4yLDQ2LjhzNDYsMzEuMyw3My40LDMzLjljMjcuNCwyLjYsNjEuOS05LjgsNjEuOS05LjhMMTk4LjYsNDIzeiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iMTM3LjIiIHkxPSI0NTEuMSIgeDI9IjE1Ni41IiB5Mj0iNDQ1LjYiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjEyMS42IiB5MT0iNDQ5LjYiIHgyPSIxNDEuMSIgeTI9IjQ0NC44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSIxMDYuOCIgeTE9IjQ0MyIgeDI9IjEyOC43IiB5Mj0iNDQzIi8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI5Mi4xIiB5MT0iNDQyIiB4Mj0iMTEyLjkiIHkyPSI0MzguMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iODMuOSIgeTE9IjQzNSIgeDI9IjExMS44IiB5Mj0iNDM1Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI2OS4zIiB5MT0iNDI5LjQiIHgyPSI5Ni41IiB5Mj0iNDI5LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjU2LjciIHkxPSI0MjMiIHgyPSI5Mi4xIiB5Mj0iNDIzLjUiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjQ5IiB5MT0iNDE0LjIiIHgyPSI3Mi4xIiB5Mj0iNDE1Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSIzNC42IiB5MT0iMzg5LjQiIHgyPSI3Mi44IiB5Mj0iNDA5LjMiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjYyLjYiIHkxPSIzODkuNCIgeDI9IjgzLjkiIHkyPSI0MDUuOCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iODMuOSIgeTE9IjM5My4yIiB4Mj0iMTAyLjUiIHkyPSI0MTIiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9Ijk1LjkiIHkxPSIzOTMuMiIgeDI9IjExMy44IiB5Mj0iNDEyIi8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSIxMTEuOCIgeTE9IjM5Ny42IiB4Mj0iMTMwLjYiIHkyPSI0MTYiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9Ijg5IiB5MT0iNDE0LjIiIHgyPSIxMTIuOSIgeTI9IjQyNi42Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTciIHgxPSIxMjIuOSIgeTE9IjM5Ny42IiB4Mj0iMTQ2LjgiIHkyPSI0MjAuNCIvPg0KCTxwYXRoIGNsYXNzPSJzdDE4IiBkPSJNMTc5LjQsNDQ1LjZjMCwwLTM1LjcsMTQuMy0zNS43LDI4LjNjMCwxNCwxMC42LDE0LjcsMTMuOSwxNC43YzAsMCwxMC4yLDEsMTMuNi0xMS42DQoJCUMxNzUsNDYzLjEsMTc5LjQsNDQ1LjYsMTc5LjQsNDQ1LjZ6Ii8+DQoJPHBhdGggY2xhc3M9InN0MTgiIGQ9Ik0yNjYuNiw0MTguOGMwLDAtMTcuNy0xNy4yLTUxLjItMTcuMnMtNDguNiwxOC41LTQ5LjMsMzRjLTAuNywxNS41LDEzLjksMzQuMSw0OS42LDMxLjZzNTEuNi0xMy43LDUyLjktMTcuNg0KCQlTMjY2LjYsNDE4LjgsMjY2LjYsNDE4Ljh6Ii8+DQoJPGc+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMzQuMSw0MjNjLTAuOCwwLTEuNSwwLTIuMywwYzAtMC41LDAtMC45LDAtMS40YzAuNywwLDEuNCwwLDIuMywwQzIzNC4xLDQyMiwyMzQuMSw0MjIuNSwyMzQuMSw0MjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNDIuOCw0MjEuOWMtMC4xLDAuNi0wLjEsMS0wLjIsMS42Yy0wLjgtMC4xLTEuNS0wLjItMi40LTAuM2MwLjEtMC41LDAuMS0wLjksMC4yLTEuNA0KCQkJQzI0MS4yLDQyMS45LDI0MS45LDQyMS45LDI0Mi44LDQyMS45eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjY3LjIsNDM1LjljMCwwLjktMC4xLDEuNy0wLjEsMi42Yy0xLjYtMC42LTEuNi0wLjYtMS4zLTIuOUMyNjYuMiw0MzUuNywyNjYuNyw0MzUuOCwyNjcuMiw0MzUuOXoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIzNi4yLDQ0NS4zYy0wLjksMC0xLjYsMC4xLTIuNCwwLjFjMC0wLjUtMC4xLTAuOS0wLjEtMS41YzAuOC0wLjEsMS41LTAuMSwyLjQtMC4yDQoJCQlDMjM2LjIsNDQ0LjMsMjM2LjIsNDQ0LjgsMjM2LjIsNDQ1LjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMjcuNyw0MjMuMmMtMC4xLTAuNi0wLjEtMS0wLjItMS41YzAuOC0wLjEsMS41LTAuMSwyLjQtMC4yYzAuMSwwLjUsMC4xLDAuOSwwLjIsMS40DQoJCQlDMjI5LjIsNDIzLjEsMjI4LjUsNDIzLjIsMjI3LjcsNDIzLjJ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMjMuNSw0MjMuN2MtMC4xLTAuNS0wLjItMC45LTAuMy0xLjVjMC44LTAuMSwxLjUtMC4zLDIuNC0wLjRjMC4xLDAuNSwwLjEsMSwwLjIsMS41DQoJCQlDMjI1LjEsNDIzLjUsMjI0LjMsNDIzLjYsMjIzLjUsNDIzLjd6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMzEuOSw0NDRjMCwwLjYsMCwxLjEsMCwxLjZjLTAuOCwwLTEuNSwwLTIuMywwYzAtMC40LTAuMS0wLjgtMC4xLTEuNEMyMzAuMyw0NDQuMSwyMzEsNDQ0LjEsMjMxLjksNDQ0eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjQyLjEsNDQzLjNjMC44LTAuMSwxLjUtMC4yLDIuNC0wLjNjMC4xLDAuNSwwLjEsMC45LDAuMiwxLjVjLTAuOCwwLjEtMS41LDAuMi0yLjMsMC4zDQoJCQlDMjQyLjMsNDQ0LjMsMjQyLjIsNDQzLjksMjQyLjEsNDQzLjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMTIuOCw0NDEuN2MwLjQtMC40LDAuNy0wLjgsMS0xLjFjMC42LDAuNSwxLjIsMC45LDEuOSwxLjRjLTAuMywwLjQtMC41LDAuOC0wLjgsMS4zDQoJCQlDMjE0LjIsNDQyLjcsMjEzLjUsNDQyLjIsMjEyLjgsNDQxLjd6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMzguNCw0MjEuNmMwLjEsMS43LDAuMSwxLjctMi40LDEuM2MwLTAuNCwwLTAuOCwwLjEtMS4zQzIzNi45LDQyMS42LDIzNy42LDQyMS42LDIzOC40LDQyMS42eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjQ3LDQyMi40Yy0wLjEsMC41LTAuMSwxLTAuMiwxLjVjLTAuNy0wLjEtMS41LTAuMi0yLjMtMC4yYzAuMS0wLjUsMC4xLTEsMC4yLTEuNQ0KCQkJQzI0NS41LDQyMi4zLDI0Ni4yLDQyMi40LDI0Nyw0MjIuNHoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIxMi42LDQzOS4zYy0wLjQsMC4zLTAuNywwLjYtMS4xLDFjLTAuNS0wLjctMS0xLjMtMS41LTIuMWMwLjUtMC4zLDAuOS0wLjUsMS40LTAuOA0KCQkJQzIxMS43LDQzOCwyMTIuMSw0MzguNiwyMTIuNiw0MzkuM3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTI1Mi45LDQ0MmMwLjEsMC41LDAuMiwxLDAuMywxLjVjLTAuOCwwLjEtMS41LDAuMi0yLjQsMC40Yy0wLjEtMC41LTAuMi0xLTAuMy0xLjUNCgkJCUMyNTEuNCw0NDIuMiwyNTIuMSw0NDIuMSwyNTIuOSw0NDJ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNDYuNiw0NDQuM2MtMC4xLTAuNi0wLjItMC45LTAuMi0xLjVjMC44LTAuMSwxLjUtMC4yLDIuNC0wLjNjMC4xLDAuNSwwLjIsMC45LDAuMywxLjUNCgkJCUMyNDguMiw0NDQuMSwyNDcuNCw0NDQuMiwyNDYuNiw0NDQuM3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIxOSw0NDUuMWMtMC45LTAuMy0xLjYtMC42LTIuNC0wLjljMC4yLTAuNSwwLjQtMC45LDAuNy0xLjRjMC43LDAuMywxLjQsMC41LDIuMiwwLjgNCgkJCUMyMTkuMyw0NDQuMSwyMTkuMSw0NDQuNSwyMTksNDQ1LjF6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMDguOSw0MzEuNmMwLjQtMC45LDAuNy0xLjcsMS0yLjVjMC41LDAuMywwLjksMC41LDEuMywwLjhjLTAuMywwLjctMC41LDEuMy0wLjgsMi4xDQoJCQlDMjEwLDQzMS44LDIwOS42LDQzMS43LDIwOC45LDQzMS42eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjY3LDQzMy44Yy0wLjYsMC0xLDAtMS41LDBjLTAuMS0wLjctMC4yLTEuNC0wLjQtMi4yYzAuNS0wLjEsMC45LTAuMiwxLjUtMC40DQoJCQlDMjY2LjcsNDMyLjEsMjY2LjksNDMyLjksMjY3LDQzMy44eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjU1LjUsNDIzLjdjLTAuMSwwLjUtMC4xLDAuOS0wLjIsMS41Yy0wLjgtMC4xLTEuNS0wLjItMi4zLTAuM2MwLjEtMC41LDAuMS0xLDAuMi0xLjUNCgkJCUMyNTMuOSw0MjMuNSwyNTQuNiw0MjMuNiwyNTUuNSw0MjMuN3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIxNy4xLDQyMy43YzAuMiwwLjUsMC4zLDAuOSwwLjUsMS40Yy0wLjcsMC4zLTEuNCwwLjYtMi4xLDAuOWMtMC4yLTAuNC0wLjUtMC44LTAuNy0xLjQNCgkJCUMyMTUuNiw0MjQuMywyMTYuNCw0MjQsMjE3LjEsNDIzLjd6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNTkuMiw0NDIuNWMtMC4xLTAuNi0wLjItMS0wLjMtMS40YzAuNy0wLjIsMS40LTAuMywyLjItMC41YzAuMiwwLjUsMC40LDAuOSwwLjYsMS40DQoJCQlDMjYwLjksNDQyLjEsMjYwLjEsNDQyLjMsMjU5LjIsNDQyLjV6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNjIuOSw0NDAuMWMxLjEtMC4yLDIuMi0xLjQsMy4xLDAuMkMyNjQuNiw0NDEuNiwyNjMuOCw0NDEuNiwyNjIuOSw0NDAuMXoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIxMS4xLDQyNy40YzAuNy0wLjYsMS4zLTEuMSwyLTEuN2MwLjMsMC41LDAuNiwwLjksMC45LDEuM2MtMC42LDAuNS0xLjIsMS0xLjgsMS41DQoJCQlDMjExLjksNDI4LjEsMjExLjUsNDI3LjgsMjExLjEsNDI3LjR6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMjAuOSw0NDUuNmMwLjEtMC42LDAuMi0xLDAuMy0xLjVjMC44LDAuMSwxLjUsMC4yLDIuMywwLjNjMCwwLjUsMCwwLjktMC4xLDEuNA0KCQkJQzIyMi41LDQ0NS43LDIyMS44LDQ0NS42LDIyMC45LDQ0NS42eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjIxLjMsNDIyLjVjMC4xLDAuNiwwLjIsMSwwLjMsMS41Yy0wLjgsMC4yLTEuNCwwLjQtMi4zLDAuNmMtMC4xLTAuNS0wLjMtMC45LTAuNC0xLjQNCgkJCUMyMTkuNyw0MjIuOSwyMjAuNSw0MjIuNywyMjEuMyw0MjIuNXoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTI1MSw0MjQuNWMtMC44LTAuMS0xLjUtMC4yLTIuMy0wLjNjMC4xLTAuNSwwLjEtMC45LDAuMi0xLjVjMC44LDAuMSwxLjYsMC4yLDIuNCwwLjMNCgkJCUMyNTEuMiw0MjMuNSwyNTEuMSw0MjMuOSwyNTEsNDI0LjV6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMTAuNiw0MzUuOGMtMC41LDAuMi0wLjksMC4zLTEuNSwwLjVjLTAuMS0wLjktMC4zLTEuNy0wLjQtMi42YzAuNiwwLDEsMCwxLjUsMA0KCQkJQzIxMC4zLDQzNC4zLDIxMC41LDQzNSwyMTAuNiw0MzUuOHoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTIzOC4xLDQ0NS4yYzAtMC42LTAuMS0xLTAuMS0xLjZjMC44LDAsMS41LTAuMSwyLjQtMC4xYzAsMC41LDAuMSwwLjksMC4xLDEuNA0KCQkJQzIzOS43LDQ0NSwyMzksNDQ1LjEsMjM4LjEsNDQ1LjJ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNTUsNDQzLjJjLTAuMS0wLjYtMC4xLTEtMC4yLTEuNWMwLjgtMC4xLDEuNS0wLjMsMi4zLTAuNGMwLjEsMC41LDAuMiwwLjksMC4zLDEuNQ0KCQkJQzI1Ni42LDQ0Mi45LDI1NS44LDQ0MywyNTUsNDQzLjJ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNTcuMyw0MjQuMWMwLjgsMC4xLDEuNSwwLjMsMi4zLDAuNGMtMC4xLDAuNS0wLjIsMC45LTAuMywxLjVjLTAuOC0wLjEtMS41LTAuMy0yLjMtMC40DQoJCQlDMjU3LjEsNDI1LjEsMjU3LjIsNDI0LjYsMjU3LjMsNDI0LjF6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yMjcuNyw0NDQuM2MwLDAuNCwwLDAuOCwwLDEuM2MtMC43LDAtMS41LDAuMS0yLjMsMC4xYzAtMC41LDAtMC45LTAuMS0xLjQNCgkJCUMyMjYuMSw0NDQuMywyMjYuOSw0NDQuMywyMjcuNyw0NDQuM3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTI2My4yLDQyNS45YzEuNCwwLDIsMC4zLDIsMS43Yy0wLjUsMC0xLjIsMC4xLTEuNi0wLjJDMjYzLjQsNDI3LjIsMjYzLjQsNDI2LjUsMjYzLjIsNDI1Ljl6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0yNjYsNDI5LjljLTAuNiwwLjEtMSwwLjItMS41LDAuM2MtMC4xLTAuNS0wLjItMC45LTAuMy0xLjNjMC41LTAuMSwwLjktMC4yLDEuNC0wLjQNCgkJCUMyNjUuNyw0MjksMjY1LjgsNDI5LjMsMjY2LDQyOS45eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMjYyLjUsNDI1LjZjLTAuMSwwLjYtMC4yLDEtMC40LDEuNWMtMC41LTAuMS0wLjktMC4yLTEuMy0wLjNjMC4xLTAuNSwwLjItMC45LDAuMy0xLjQNCgkJCUMyNjEuNSw0MjUuNCwyNjEuOSw0MjUuNSwyNjIuNSw0MjUuNnoiLz4NCgk8L2c+DQoJPGxpbmUgY2xhc3M9InN0MTkiIHgxPSIyNTMuMyIgeTE9IjQxNi44IiB4Mj0iMjU2IiB5Mj0iNDIyLjUiLz4NCgk8bGluZSBjbGFzcz0ic3QyMCIgeDE9IjI0NS4zIiB5MT0iNDEzLjgiIHgyPSIyNDguMyIgeTI9IjQyMC4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSIyMzcuOCIgeTE9IjQxMSIgeDI9IjI0MC43IiB5Mj0iNDE4LjciLz4NCgk8bGluZSBjbGFzcz0ic3QyMCIgeDE9IjIyOC4zIiB5MT0iNDExIiB4Mj0iMjMzLjIiIHkyPSI0MTguNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDIwIiB4MT0iMjE3LjgiIHkxPSI0MDkuOCIgeDI9IjIyNC4xIiB5Mj0iNDE3Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjEiIHgxPSIyMDguMSIgeTE9IjQwOS41IiB4Mj0iMjE1LjciIHkyPSI0MTkuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIxIiB4MT0iMjAwLjQiIHkxPSI0MTIuNyIgeDI9IjIwOC43IiB5Mj0iNDIwLjIiLz4NCgk8bGluZSBjbGFzcz0ic3QyMSIgeDE9IjE4OC4zIiB5MT0iNDE0LjgiIHgyPSIyMDAuNyIgeTI9IjQyMi42Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjEiIHgxPSIxODQuNSIgeTE9IjQyMC42IiB4Mj0iMTk1LjgiIHkyPSI0MjcuNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iMTgwLjciIHkxPSI0MjcuNyIgeDI9IjE5MS4zIiB5Mj0iNDMwLjYiLz4NCgk8bGluZSBjbGFzcz0ic3QyMiIgeDE9IjE3Ny45IiB5MT0iNDM1IiB4Mj0iMTkwLjgiIHkyPSI0MzUuNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iMTgwLjciIHkxPSI0NDIuNyIgeDI9IjE5MS4zIiB5Mj0iNDM5LjUiLz4NCgk8bGluZSBjbGFzcz0ic3QyMiIgeDE9IjE4NC40IiB5MT0iNDQ5LjciIHgyPSIxOTUiIHkyPSI0NDMuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iMTg4IiB5MT0iNDU1LjciIHgyPSIyMDAuOSIgeTI9IjQ0Ny45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjIiIHgxPSIyMDAuNCIgeTE9IjQ1Ny4zIiB4Mj0iMjA5LjUiIHkyPSI0NDkuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iMjA4LjEiIHkxPSI0NjAuMyIgeDI9IjIxNS43IiB5Mj0iNDUwLjkiLz4NCgk8bGluZSBjbGFzcz0ic3QyMCIgeDE9IjIxNy44IiB5MT0iNDU5LjkiIHgyPSIyMjQuNCIgeTI9IjQ1Mi45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSIyMjguMyIgeTE9IjQ1OS41IiB4Mj0iMjMzLjIiIHkyPSI0NTEuOCIvPg0KCTxsaW5lIGNsYXNzPSJzdDIwIiB4MT0iMjM3LjQiIHkxPSI0NTkuNSIgeDI9IjI0MSIgeTI9IjQ1MS4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSIyNDUuMyIgeTE9IjQ1Ni40IiB4Mj0iMjQ4LjMiIHkyPSI0NTAuMSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE5IiB4MT0iMjUzLjMiIHkxPSI0NTMuMyIgeDI9IjI1Ni4zIiB5Mj0iNDQ3LjUiLz4NCgk8Zz4NCgkJPHBhdGggY2xhc3M9InN0MTAiIGQ9Ik01NjAuNiwzNzYuM2MtNS43LDIuMi0yNy4zLDEwLjktMzAuMSwxNi4yYzAsMCwxLjMtMjAuNywxMS45LTM1LjJzMjIuMi00LjgsMjIuMi00LjhzMTMuNSwxMS4yLTEuMSwyMi4zDQoJCQlDNTYyLjYsMzc1LjQsNTYxLjYsMzc1LjksNTYwLjYsMzc2LjN6Ii8+DQoJCTxjaXJjbGUgY2xhc3M9InN0MTEiIGN4PSI1NTUuNiIgY3k9IjM2My4zIiByPSIxMy4xIi8+DQoJPC9nPg0KCTxnPg0KCQk8cGF0aCBjbGFzcz0ic3QxMCIgZD0iTTU3Ny41LDMyNS4xYy02LjEsMC4zLTI5LjQsMS45LTMzLjcsNmMwLDAsNy43LTE5LjMsMjIuMi0yOS43YzE0LjYtMTAuNCwyMi42LDIuMywyMi42LDIuM3M5LjMsMTQuOC04LDIwLjgNCgkJCUM1NzkuNywzMjQuOSw1NzguNiwzMjUuMSw1NzcuNSwzMjUuMXoiLz4NCgkJPGNpcmNsZSBjbGFzcz0ic3QxMSIgY3g9IjU3Ni44IiBjeT0iMzExLjEiIHI9IjEzLjEiLz4NCgk8L2c+DQoJPHBhdGggY2xhc3M9InN0MTIiIGQ9Ik00MDcuOCwyMS42YzAsMCw0My4zLDEuNiw4MCw0MS4zczIyLjMsNzAuMiwyMSw3OC44YzAsMC0zNy42LTEuNC03MC45LTQxLjFTNDA3LjgsMjEuNiw0MDcuOCwyMS42eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDEzIiBkPSJNNDQ3LjEsNjIuNGMwLDAsNDEsMTguNywzNy44LDUwLjdDNDg0LjksMTEzLDQ0OS4zLDEwMS4xLDQ0Ny4xLDYyLjR6Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0MTcuNyIgeTE9IjMxLjciIHgyPSI0MzQuNCIgeTI9IjQ5LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjQ0Mi43IiB5MT0iNDEuNiIgeDI9IjQ0OS4zIiB5Mj0iNTUuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iNDU0LjciIHkxPSI0Ny44IiB4Mj0iNDYxLjgiIHkyPSI2My4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0NjguMiIgeTE9IjU5LjIiIHgyPSI0NzUiIHkyPSI3NS40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0ODYuNyIgeTE9Ijc2LjIiIHgyPSI0ODYuNyIgeTI9IjkyLjYiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjQ5Ny4yIiB5MT0iODUuOCIgeDI9IjQ5Ny4yIiB5Mj0iMTAyIi8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0MzkuMSIgeTE9IjYxLjEiIHgyPSI0MjEuNCIgeTI9IjU3LjIiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjQzOS4xIiB5MT0iNjkuOSIgeDI9IjQyNS4yIiB5Mj0iNjYuNSIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iNDQ2IiB5MT0iNzkuNiIgeDI9IjQzMC41IiB5Mj0iNzguNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDEzIiB4MT0iNDUyIiB5MT0iODkiIHgyPSI0MzYuNiIgeTI9Ijg5Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0NTcuOCIgeTE9Ijk3LjQiIHgyPSI0NDEuOCIgeTI9Ijk3LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxMyIgeDE9IjQ2MS44IiB5MT0iMTA2LjIiIHgyPSI0NDkuOSIgeTI9IjEwNi4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MTMiIHgxPSI0NzAuNCIgeTE9IjExNC43IiB4Mj0iNDU3LjMiIHkyPSIxMTQuNyIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik00ODYuOCwxMDEuNWMwLDAsNDAsMTksNTguNSw3MS4xYzE4LjUsNTIuMS03LjMsNzQuOS0xMi4xLDgyLjVjMCwwLTM0LjgtMTYuNS01MC4xLTY3LjINCgkJUzQ4Ni44LDEwMS41LDQ4Ni44LDEwMS41eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDE0IiBkPSJNNTA3LjMsMTU1LjdjMCwwLDMxLDM0LjEsMTUuMSw2Mi44QzUyMi40LDIxOC41LDQ5My43LDE5Mi45LDUwNy4zLDE1NS43eiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDkyIiB5MT0iMTE1IiB4Mj0iNTAwLjYiIHkyPSIxMzguMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTExLjUiIHkxPSIxMzQuNCIgeDI9IjUxMi4yIiB5Mj0iMTUwIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MjAuMyIgeTE9IjE0NSIgeDI9IjUyMC44IiB5Mj0iMTYyLjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjUyOC40IiB5MT0iMTYxLjIiIHgyPSI1MjguMiIgeTI9IjE3OS4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MzguOSIgeTE9IjE4NC42IiB4Mj0iNTMyLjMiIHkyPSIyMDAuMSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTQ1IiB5MT0iMTk3LjkiIHgyPSI1MzguNSIgeTI9IjIxMy4xIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MDAuMyIgeTE9IjE1MS4yIiB4Mj0iNDg1LjIiIHkyPSIxNDAuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDk2LjciIHkxPSIxNTkuNSIgeDI9IjQ4NS4xIiB5Mj0iMTUwLjciLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjQ5OS4zIiB5MT0iMTcxLjQiIHgyPSI0ODUuMSIgeTI9IjE2NC40Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MDEuMiIgeTE9IjE4Mi42IiB4Mj0iNDg2LjciIHkyPSIxNzYuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTAzLjIiIHkxPSIxOTIuOSIgeDI9IjQ4OC4yIiB5Mj0iMTg2LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjUwMy41IiB5MT0iMjAyLjciIHgyPSI0OTIuMyIgeTI9IjE5Ny45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MDguMiIgeTE9IjIxNC4yIiB4Mj0iNDk1LjgiIHkyPSIyMDguOSIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01NzIuMiwxNDIuMmMwLDAsMjMuOCwzNy40LDExLjgsOTEuM2MtMTIsNTQtNDYsNTkuNi01NC4xLDYzLjVjMCwwLTIwLjctMzIuNS02LjctODMuNg0KCQlDNTM3LjMsMTYyLjMsNTcyLjIsMTQyLjIsNTcyLjIsMTQyLjJ6Ii8+DQoJPHBhdGggY2xhc3M9InN0MTQiIGQ9Ik01NjAuOCwxOTkuMWMwLDAsOC4xLDQ1LjQtMjAuNiw2MS4zQzU0MC4yLDI2MC4zLDUyOS41LDIyMy40LDU2MC44LDE5OS4xeiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTY5LjUiIHkxPSIxNTYuNSIgeDI9IjU2NC40IiB5Mj0iMTgwLjgiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU3NS43IiB5MT0iMTgzLjIiIHgyPSI1NjcuOSIgeTI9IjE5Ni44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1NzcuNSIgeTE9IjE5NyIgeDI9IjU2OC42IiB5Mj0iMjEyIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1NzUuOCIgeTE9IjIxNSIgeDI9IjU2Ni4xIiB5Mj0iMjMwLjEiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU3Mi4yIiB5MT0iMjQwLjQiIHgyPSI1NTguNCIgeTI9IjI0OS45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1NzAuMyIgeTE9IjI1NC45IiB4Mj0iNTU2LjciIHkyPSIyNjQuMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTU3LjMiIHkxPSIxOTEuNSIgeDI9IjU1MC4yIiB5Mj0iMTc0LjQiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU0OS44IiB5MT0iMTk2LjciIHgyPSI1NDQuNiIgeTI9IjE4MyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTQ1LjciIHkxPSIyMDguMSIgeDI9IjUzNy40IiB5Mj0iMTk0LjYiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU0MS4zIiB5MT0iMjE4LjYiIHgyPSI1MzIuNCIgeTI9IjIwNS43Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MzcuNiIgeTE9IjIyOC40IiB4Mj0iNTI4LjMiIHkyPSIyMTQuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTMyLjYiIHkxPSIyMzYuOSIgeDI9IjUyNS42IiB5Mj0iMjI2LjkiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjUzMC40IiB5MT0iMjQ5LjEiIHgyPSI1MjIuOCIgeTI9IjIzOCIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik01MDAuNiwyMTJjMCwwLDYsMTEzLjQtODQuNywyMDAuM2wxMS41LDM2LjJjMCwwLDEwMy01OS41LDEyNi4zLTEzNi4xQzU3NS42LDI0MC4zLDUzNy42LDIxNS40LDUwMC42LDIxMnoiLz4NCgk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNNTA4LjIsMjk3LjljMCwwLDMuMiw1My40LTYyLjgsMTI1LjJsLTQuMS00LjNDNDQxLjIsNDE4LjgsNTA1LjMsMzM2LjksNTA4LjIsMjk3Ljl6Ii8+DQoJPHBhdGggY2xhc3M9InN0NiIgZD0iTTUyNS43LDI4MC4zYzAsMCwzLjcsNjAuNy01NC41LDEzMS43bC00LjEtNC4zQzQ2Ny4xLDQwNy43LDUwNi45LDM2MS42LDUyNS43LDI4MC4zeiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDQ3LjYiIHkxPSIzODQuMiIgeDI9IjQ0NyIgeTI9IjM5Ny44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI0NTUuMSIgeTE9IjM5MSIgeDI9IjQ1My43IiB5Mj0iMzk1LjMiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjQ1Ni40IiB5MT0iMzgxLjEiIHgyPSI0NTUuNyIgeTI9IjM4Ni41Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI0NTgiIHkxPSIzNjcuNCIgeDI9IjQ1Ny4yIiB5Mj0iMzc1LjMiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjQ2NS44IiB5MT0iMzY3LjQiIHgyPSI0NjUuMiIgeTI9IjM4Ni41Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI0NzMiIHkxPSIzNDkuOSIgeDI9IjQ3MyIgeTI9IjM2NiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNDgyLjUiIHkxPSIzMjYiIHgyPSI0ODUuNyIgeTI9IjM0My4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI0OTUiIHkxPSIyOTAuOCIgeDI9IjQ5OS4yIiB5Mj0iMzEwLjMiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjQ5Ny4xIiB5MT0iMjgxLjUiIHgyPSI1MDQuNyIgeTI9IjI5OS44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1MDQuNyIgeTE9IjI2MC4zIiB4Mj0iNTEyLjUiIHkyPSIyNzkiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjUzNi44IiB5MT0iMjMyLjkiIHgyPSI1MzAuNCIgeTI9IjI1OS4xIi8+DQoJPGxpbmUgY2xhc3M9InN0MTQiIHgxPSI1NDEuNyIgeTE9IjI1MC4yIiB4Mj0iNTMzLjYiIHkyPSIyNjUuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE0IiB4MT0iNTU1LjMiIHkxPSIyNjkuNSIgeDI9IjUzNC42IiB5Mj0iMjkzLjUiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU1NC4zIiB5MT0iMjgxLjUiIHgyPSI1MzQuNiIgeTI9IjMwMy4yIi8+DQoJPHBhdGggY2xhc3M9InN0MTQiIGQ9Ik01NTIuOSwyOTYuMWMwLDAtMTEuNSwxMy0xOS4zLDE2LjIiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTU1MS45LDMwOC44YzAsMC0xMS42LDEwLjMtMjEuNSwxNC40Ii8+DQoJPHBhdGggY2xhc3M9InN0MTQiIGQ9Ik01NDMuMywzMjUuNGMwLDAtMy42LDYuMS0yMS4zLDE0LjIiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTUzOS43LDMzN2MwLDAtOC4zLDkuMy0yMS4zLDEyLjkiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTUzMS41LDM1Mi4xYzAsMC0xMC45LDkuNy0yMC44LDEyLjkiLz4NCgk8cGF0aCBjbGFzcz0ic3QxNCIgZD0iTTUyMC41LDM2NmMwLDAtOC40LDkuOC0yMS4yLDEzLjkiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjU0Ny40IiB5MT0iMjYyLjkiIHgyPSI1MzYuOCIgeTI9IjI3Ni44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1MjQuNCIgeTE9IjIzMC45IiB4Mj0iNTI1LjgiIHkyPSIyNDYuNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE2IiB4MT0iNDkwIiB5MT0iMzAzLjkiIHgyPSI0OTMuOCIgeTI9IjMyMS4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTYiIHgxPSI1MDEuNCIgeTE9IjI3Mi4zIiB4Mj0iNTA5LjUiIHkyPSIyODkuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE2IiB4MT0iNTA2IiB5MT0iMjQxLjYiIHgyPSI1MTguNCIgeTI9IjI3MS43Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTYiIHgxPSI1MDYuNiIgeTE9IjIxOS43IiB4Mj0iNTIyLjgiIHkyPSIyNTQuOSIvPg0KCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik00MjUsNDIzYzAsMCwwLjItMC4xLDAuNS0wLjNjNC44LTMsNDQuNi0yNy4zLDczLjgtMzMuOGMzMS4xLTYuOSw4Ni4yLTMuMiw5MC4xLTMuMmMzLjksMCwyMC42LTkuNSwyMC42LTkuNQ0KCQlzLTQuOSwyOC40LTI5LjIsNDYuOHMtNDYsMzEuMy03My40LDMzLjljLTI3LjQsMi42LTYxLjktOS44LTYxLjktOS44TDQyNSw0MjN6Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI0ODYuNSIgeTE9IjQ1MS4xIiB4Mj0iNDY3LjEiIHkyPSI0NDUuNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTAyIiB5MT0iNDQ5LjYiIHgyPSI0ODIuNSIgeTI9IjQ0NC44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1MTYuOCIgeTE9IjQ0MyIgeDI9IjQ5NSIgeTI9IjQ0MyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTMxLjUiIHkxPSI0NDIiIHgyPSI1MTAuNyIgeTI9IjQzOC4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1MzkuNyIgeTE9IjQzNSIgeDI9IjUxMS45IiB5Mj0iNDM1Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1NTQuMyIgeTE9IjQyOS40IiB4Mj0iNTI3LjEiIHkyPSI0MjkuNCIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTY2LjkiIHkxPSI0MjMiIHgyPSI1MzEuNSIgeTI9IjQyMy41Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1NzQuNiIgeTE9IjQxNC4yIiB4Mj0iNTUxLjUiIHkyPSI0MTUiLz4NCgk8bGluZSBjbGFzcz0ic3QxNCIgeDE9IjU4OSIgeTE9IjM4OS40IiB4Mj0iNTUwLjkiIHkyPSI0MDkuMyIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTYxIiB5MT0iMzg5LjQiIHgyPSI1MzkuNyIgeTI9IjQwNS44Ii8+DQoJPGxpbmUgY2xhc3M9InN0MTUiIHgxPSI1MzkuNyIgeTE9IjM5My4yIiB4Mj0iNTIxLjEiIHkyPSI0MTIiLz4NCgk8bGluZSBjbGFzcz0ic3QxNSIgeDE9IjUyNy44IiB5MT0iMzkzLjIiIHgyPSI1MDkuOSIgeTI9IjQxMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTExLjkiIHkxPSIzOTcuNiIgeDI9IjQ5MyIgeTI9IjQxNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDE1IiB4MT0iNTM0LjYiIHkxPSI0MTQuMiIgeDI9IjUxMC43IiB5Mj0iNDI2LjYiLz4NCgk8bGluZSBjbGFzcz0ic3QxNyIgeDE9IjUwMC43IiB5MT0iMzk3LjYiIHgyPSI0NzYuOCIgeTI9IjQyMC40Ii8+DQoJPHBhdGggY2xhc3M9InN0MTgiIGQ9Ik00NDQuMiw0NDUuNmMwLDAsMzUuNywxNC4zLDM1LjcsMjguM2MwLDE0LTEwLjYsMTQuNy0xMy45LDE0LjdjMCwwLTEwLjIsMS0xMy42LTExLjYNCgkJQzQ0OC42LDQ2My4xLDQ0NC4yLDQ0NS42LDQ0NC4yLDQ0NS42eiIvPg0KCTxwYXRoIGNsYXNzPSJzdDE4IiBkPSJNMzU3LjEsNDE4LjhjMCwwLDE3LjctMTcuMiw1MS4yLTE3LjJzNDguNiwxOC41LDQ5LjMsMzRjMC43LDE1LjUtMTMuOSwzNC4xLTQ5LjYsMzEuNnMtNTEuNi0xMy43LTUyLjktMTcuNg0KCQlDMzUzLjcsNDQ1LjYsMzU3LjEsNDE4LjgsMzU3LjEsNDE4Ljh6Ii8+DQoJPGc+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zODkuNSw0MjNjMC44LDAsMS41LDAsMi4zLDBjMC0wLjUsMC0wLjksMC0xLjRjLTAuNywwLTEuNCwwLTIuMywwQzM4OS41LDQyMiwzODkuNSw0MjIuNSwzODkuNSw0MjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zODAuOCw0MjEuOWMwLjEsMC42LDAuMSwxLDAuMiwxLjZjMC44LTAuMSwxLjUtMC4yLDIuNC0wLjNjLTAuMS0wLjUtMC4xLTAuOS0wLjItMS40DQoJCQlDMzgyLjQsNDIxLjksMzgxLjcsNDIxLjksMzgwLjgsNDIxLjl6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNTYuNCw0MzUuOWMwLDAuOSwwLjEsMS43LDAuMSwyLjZjMS42LTAuNiwxLjYtMC42LDEuMy0yLjlDMzU3LjQsNDM1LjcsMzU2LjksNDM1LjgsMzU2LjQsNDM1Ljl6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zODcuNCw0NDUuM2MwLjksMCwxLjYsMC4xLDIuNCwwLjFjMC0wLjUsMC4xLTAuOSwwLjEtMS41Yy0wLjgtMC4xLTEuNS0wLjEtMi40LTAuMg0KCQkJQzM4Ny41LDQ0NC4zLDM4Ny40LDQ0NC44LDM4Ny40LDQ0NS4zeiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzk2LDQyMy4yYzAuMS0wLjYsMC4xLTEsMC4yLTEuNWMtMC44LTAuMS0xLjUtMC4xLTIuNC0wLjJjLTAuMSwwLjUtMC4xLDAuOS0wLjIsMS40DQoJCQlDMzk0LjQsNDIzLjEsMzk1LjEsNDIzLjIsMzk2LDQyMy4yeiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNNDAwLjEsNDIzLjdjMC4xLTAuNSwwLjItMC45LDAuMy0xLjVjLTAuOC0wLjEtMS41LTAuMy0yLjQtMC40Yy0wLjEsMC41LTAuMSwxLTAuMiwxLjUNCgkJCUMzOTguNiw0MjMuNSwzOTkuMyw0MjMuNiw0MDAuMSw0MjMuN3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTM5MS43LDQ0NGMwLDAuNiwwLDEuMSwwLDEuNmMwLjgsMCwxLjUsMCwyLjMsMGMwLTAuNCwwLjEtMC44LDAuMS0xLjRDMzkzLjMsNDQ0LjEsMzkyLjYsNDQ0LjEsMzkxLjcsNDQ0eiINCgkJCS8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zODEuNSw0NDMuM2MtMC44LTAuMS0xLjUtMC4yLTIuNC0wLjNjLTAuMSwwLjUtMC4xLDAuOS0wLjIsMS41YzAuOCwwLjEsMS41LDAuMiwyLjMsMC4zDQoJCQlDMzgxLjMsNDQ0LjMsMzgxLjQsNDQzLjksMzgxLjUsNDQzLjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik00MTAuOCw0NDEuN2MtMC40LTAuNC0wLjctMC44LTEtMS4xYy0wLjYsMC41LTEuMiwwLjktMS45LDEuNGMwLjMsMC40LDAuNSwwLjgsMC44LDEuMw0KCQkJQzQwOS41LDQ0Mi43LDQxMC4xLDQ0Mi4yLDQxMC44LDQ0MS43eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzg1LjIsNDIxLjZjLTAuMSwxLjctMC4xLDEuNywyLjQsMS4zYzAtMC40LDAtMC44LTAuMS0xLjNDMzg2LjcsNDIxLjYsMzg2LDQyMS42LDM4NS4yLDQyMS42eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzc2LjYsNDIyLjRjMC4xLDAuNSwwLjEsMSwwLjIsMS41YzAuNy0wLjEsMS41LTAuMiwyLjMtMC4yYy0wLjEtMC41LTAuMS0xLTAuMi0xLjUNCgkJCUMzNzguMSw0MjIuMywzNzcuNCw0MjIuNCwzNzYuNiw0MjIuNHoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTQxMSw0MzkuM2MwLjQsMC4zLDAuNywwLjYsMS4xLDFjMC41LTAuNywxLTEuMywxLjUtMi4xYy0wLjUtMC4zLTAuOS0wLjUtMS40LTAuOA0KCQkJQzQxMS45LDQzOCw0MTEuNSw0MzguNiw0MTEsNDM5LjN6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNzAuNyw0NDJjLTAuMSwwLjUtMC4yLDEtMC4zLDEuNWMwLjgsMC4xLDEuNSwwLjIsMi40LDAuNGMwLjEtMC41LDAuMi0xLDAuMy0xLjUNCgkJCUMzNzIuMiw0NDIuMiwzNzEuNSw0NDIuMSwzNzAuNyw0NDJ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNzcsNDQ0LjNjMC4xLTAuNiwwLjItMC45LDAuMi0xLjVjLTAuOC0wLjEtMS41LTAuMi0yLjQtMC4zYy0wLjEsMC41LTAuMiwwLjktMC4zLDEuNQ0KCQkJQzM3NS40LDQ0NC4xLDM3Ni4yLDQ0NC4yLDM3Nyw0NDQuM3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTQwNC42LDQ0NS4xYzAuOS0wLjMsMS42LTAuNiwyLjQtMC45Yy0wLjItMC41LTAuNC0wLjktMC43LTEuNGMtMC43LDAuMy0xLjQsMC41LTIuMiwwLjgNCgkJCUM0MDQuNCw0NDQuMSw0MDQuNSw0NDQuNSw0MDQuNiw0NDUuMXoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTQxNC43LDQzMS42Yy0wLjQtMC45LTAuNy0xLjctMS0yLjVjLTAuNSwwLjMtMC45LDAuNS0xLjMsMC44YzAuMywwLjcsMC41LDEuMywwLjgsMi4xDQoJCQlDNDEzLjYsNDMxLjgsNDE0LjEsNDMxLjcsNDE0LjcsNDMxLjZ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNTYuNiw0MzMuOGMwLjYsMCwxLDAsMS41LDBjMC4xLTAuNywwLjItMS40LDAuNC0yLjJjLTAuNS0wLjEtMC45LTAuMi0xLjUtMC40DQoJCQlDMzU2LjksNDMyLjEsMzU2LjcsNDMyLjksMzU2LjYsNDMzLjh6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNjguMiw0MjMuN2MwLjEsMC41LDAuMSwwLjksMC4yLDEuNWMwLjgtMC4xLDEuNS0wLjIsMi4zLTAuM2MtMC4xLTAuNS0wLjEtMS0wLjItMS41DQoJCQlDMzY5LjcsNDIzLjUsMzY5LDQyMy42LDM2OC4yLDQyMy43eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNNDA2LjUsNDIzLjdjLTAuMiwwLjUtMC4zLDAuOS0wLjUsMS40YzAuNywwLjMsMS40LDAuNiwyLjEsMC45YzAuMi0wLjQsMC41LTAuOCwwLjctMS40DQoJCQlDNDA4LDQyNC4zLDQwNy4zLDQyNCw0MDYuNSw0MjMuN3oiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTM2NC40LDQ0Mi41YzAuMS0wLjYsMC4yLTEsMC4zLTEuNGMtMC43LTAuMi0xLjQtMC4zLTIuMi0wLjVjLTAuMiwwLjUtMC40LDAuOS0wLjYsMS40DQoJCQlDMzYyLjcsNDQyLjEsMzYzLjUsNDQyLjMsMzY0LjQsNDQyLjV6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNjAuNyw0NDAuMWMtMS4xLTAuMi0yLjItMS40LTMuMSwwLjJDMzU5LDQ0MS42LDM1OS45LDQ0MS42LDM2MC43LDQ0MC4xeiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNNDEyLjUsNDI3LjRjLTAuNy0wLjYtMS4zLTEuMS0yLTEuN2MtMC4zLDAuNS0wLjYsMC45LTAuOSwxLjNjMC42LDAuNSwxLjIsMSwxLjgsMS41DQoJCQlDNDExLjcsNDI4LjEsNDEyLjEsNDI3LjgsNDEyLjUsNDI3LjR6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik00MDIuOCw0NDUuNmMtMC4xLTAuNi0wLjItMS0wLjMtMS41Yy0wLjgsMC4xLTEuNSwwLjItMi4zLDAuM2MwLDAuNSwwLDAuOSwwLjEsMS40DQoJCQlDNDAxLjEsNDQ1LjcsNDAxLjgsNDQ1LjYsNDAyLjgsNDQ1LjZ6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik00MDIuMyw0MjIuNWMtMC4xLDAuNi0wLjIsMS0wLjMsMS41YzAuOCwwLjIsMS40LDAuNCwyLjMsMC42YzAuMS0wLjUsMC4zLTAuOSwwLjQtMS40DQoJCQlDNDAzLjksNDIyLjksNDAzLjIsNDIyLjcsNDAyLjMsNDIyLjV6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNzIuNiw0MjQuNWMwLjgtMC4xLDEuNS0wLjIsMi4zLTAuM2MtMC4xLTAuNS0wLjEtMC45LTAuMi0xLjVjLTAuOCwwLjEtMS42LDAuMi0yLjQsMC4zDQoJCQlDMzcyLjQsNDIzLjUsMzcyLjUsNDIzLjksMzcyLjYsNDI0LjV6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik00MTMsNDM1LjhjMC41LDAuMiwwLjksMC4zLDEuNSwwLjVjMC4xLTAuOSwwLjMtMS43LDAuNC0yLjZjLTAuNiwwLTEsMC0xLjUsMA0KCQkJQzQxMy4zLDQzNC4zLDQxMy4yLDQzNSw0MTMsNDM1Ljh6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zODUuNSw0NDUuMmMwLTAuNiwwLjEtMSwwLjEtMS42Yy0wLjgsMC0xLjUtMC4xLTIuNC0wLjFjMCwwLjUtMC4xLDAuOS0wLjEsMS40DQoJCQlDMzgzLjksNDQ1LDM4NC43LDQ0NS4xLDM4NS41LDQ0NS4yeiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzY4LjcsNDQzLjJjMC4xLTAuNiwwLjEtMSwwLjItMS41Yy0wLjgtMC4xLTEuNS0wLjMtMi4zLTAuNGMtMC4xLDAuNS0wLjIsMC45LTAuMywxLjUNCgkJCUMzNjcsNDQyLjksMzY3LjgsNDQzLDM2OC43LDQ0My4yeiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzY2LjMsNDI0LjFjLTAuOCwwLjEtMS41LDAuMy0yLjMsMC40YzAuMSwwLjUsMC4yLDAuOSwwLjMsMS41YzAuOC0wLjEsMS41LTAuMywyLjMtMC40DQoJCQlDMzY2LjUsNDI1LjEsMzY2LjQsNDI0LjYsMzY2LjMsNDI0LjF6Ii8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zOTYsNDQ0LjNjMCwwLjQsMCwwLjgsMCwxLjNjMC43LDAsMS41LDAuMSwyLjMsMC4xYzAtMC41LDAtMC45LDAuMS0xLjRDMzk3LjUsNDQ0LjMsMzk2LjgsNDQ0LjMsMzk2LDQ0NC4zeg0KCQkJIi8+DQoJCTxwYXRoIGNsYXNzPSJzdDYiIGQ9Ik0zNjAuNCw0MjUuOWMtMS40LDAtMiwwLjMtMiwxLjdjMC41LDAsMS4yLDAuMSwxLjYtMC4yQzM2MC4zLDQyNy4yLDM2MC4yLDQyNi41LDM2MC40LDQyNS45eiIvPg0KCQk8cGF0aCBjbGFzcz0ic3Q2IiBkPSJNMzU3LjYsNDI5LjljMC42LDAuMSwxLDAuMiwxLjUsMC4zYzAuMS0wLjUsMC4yLTAuOSwwLjMtMS4zYy0wLjUtMC4xLTAuOS0wLjItMS40LTAuNA0KCQkJQzM1Ny45LDQyOSwzNTcuOCw0MjkuMywzNTcuNiw0MjkuOXoiLz4NCgkJPHBhdGggY2xhc3M9InN0NiIgZD0iTTM2MS4yLDQyNS42YzAuMSwwLjYsMC4yLDEsMC40LDEuNWMwLjUtMC4xLDAuOS0wLjIsMS4zLTAuM2MtMC4xLTAuNS0wLjItMC45LTAuMy0xLjQNCgkJCUMzNjIuMSw0MjUuNCwzNjEuNyw0MjUuNSwzNjEuMiw0MjUuNnoiLz4NCgk8L2c+DQoJPGxpbmUgY2xhc3M9InN0MTkiIHgxPSIzNzAuMyIgeTE9IjQxNi44IiB4Mj0iMzY3LjciIHkyPSI0MjIuNSIvPg0KCTxsaW5lIGNsYXNzPSJzdDIwIiB4MT0iMzc4LjMiIHkxPSI0MTMuOCIgeDI9IjM3NS40IiB5Mj0iNDIwLjIiLz4NCgk8bGluZSBjbGFzcz0ic3QyMCIgeDE9IjM4NS44IiB5MT0iNDExIiB4Mj0iMzgyLjkiIHkyPSI0MTguNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDIwIiB4MT0iMzk1LjMiIHkxPSI0MTEiIHgyPSIzOTAuNCIgeTI9IjQxOC43Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSI0MDUuOCIgeTE9IjQwOS44IiB4Mj0iMzk5LjUiIHkyPSI0MTciLz4NCgk8bGluZSBjbGFzcz0ic3QyMSIgeDE9IjQxNS41IiB5MT0iNDA5LjUiIHgyPSI0MDcuOSIgeTI9IjQxOS4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MjEiIHgxPSI0MjMuMiIgeTE9IjQxMi43IiB4Mj0iNDE0LjkiIHkyPSI0MjAuMiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIxIiB4MT0iNDM1LjMiIHkxPSI0MTQuOCIgeDI9IjQyMyIgeTI9IjQyMi42Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjEiIHgxPSI0MzkuMSIgeTE9IjQyMC42IiB4Mj0iNDI3LjgiIHkyPSI0MjcuNyIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iNDQyLjkiIHkxPSI0MjcuNyIgeDI9IjQzMi4zIiB5Mj0iNDMwLjYiLz4NCgk8bGluZSBjbGFzcz0ic3QyMiIgeDE9IjQ0NS43IiB5MT0iNDM1IiB4Mj0iNDMyLjgiIHkyPSI0MzUuNiIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iNDQyLjkiIHkxPSI0NDIuNyIgeDI9IjQzMi4zIiB5Mj0iNDM5LjUiLz4NCgk8bGluZSBjbGFzcz0ic3QyMiIgeDE9IjQzOS4zIiB5MT0iNDQ5LjciIHgyPSI0MjguNiIgeTI9IjQ0My4yIi8+DQoJPGxpbmUgY2xhc3M9InN0MjIiIHgxPSI0MzUuNiIgeTE9IjQ1NS43IiB4Mj0iNDIyLjciIHkyPSI0NDcuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDIyIiB4MT0iNDIzLjIiIHkxPSI0NTcuMyIgeDI9IjQxNC4xIiB5Mj0iNDQ5LjIiLz4NCgk8bGluZSBjbGFzcz0ic3QyMiIgeDE9IjQxNS41IiB5MT0iNDYwLjMiIHgyPSI0MDcuOSIgeTI9IjQ1MC45Ii8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSI0MDUuOCIgeTE9IjQ1OS45IiB4Mj0iMzk5LjIiIHkyPSI0NTIuOSIvPg0KCTxsaW5lIGNsYXNzPSJzdDIwIiB4MT0iMzk1LjMiIHkxPSI0NTkuNSIgeDI9IjM5MC40IiB5Mj0iNDUxLjgiLz4NCgk8bGluZSBjbGFzcz0ic3QyMCIgeDE9IjM4Ni4yIiB5MT0iNDU5LjUiIHgyPSIzODIuNiIgeTI9IjQ1MS4zIi8+DQoJPGxpbmUgY2xhc3M9InN0MjAiIHgxPSIzNzguMyIgeTE9IjQ1Ni40IiB4Mj0iMzc1LjQiIHkyPSI0NTAuMSIvPg0KCTxsaW5lIGNsYXNzPSJzdDE5IiB4MT0iMzcwLjMiIHkxPSI0NTMuMyIgeDI9IjM2Ny4zIiB5Mj0iNDQ3LjUiLz4NCgk8Zz4NCgkJPHBhdGggY2xhc3M9InN0MjMiIGQ9Ik0yNjMuNSw0MTV2NTEuMmMwLDAsMTAuMSw3LjYsMjQuNSwwYzAsMCwyMy42LDcuNiw0Ny4yLDBjMCwwLDExLjIsNy45LDI0LjMsMGwwLjUtNTEuNQ0KCQkJYzAsMC0xMi43LDYuMi0yNC43LDAuM2MwLDAtMjcuOSw3LjMtNDcuMi0wLjFDMjg4LjEsNDE0LjksMjc3LjIsNDIwLjIsMjYzLjUsNDE1eiIvPg0KCQk8cmVjdCB4PSIyODcuMSIgeT0iNDE1LjIiIGNsYXNzPSJzdDYiIHdpZHRoPSIxLjkiIGhlaWdodD0iNTEiLz4NCgkJPHJlY3QgeD0iMzM0LjQiIHk9IjQxNS4yIiBjbGFzcz0ic3Q2IiB3aWR0aD0iMS45IiBoZWlnaHQ9IjUxIi8+DQoJCTxwYXRoIGNsYXNzPSJzdDI0IiBkPSJNMjYzLjgsNDE5LjJjMCwwLDEwLjEsNy42LDI0LjUsMGMwLDAsMjMuNiw3LjYsNDcuMiwwYzAsMCwxMS4yLDcuOSwyNC4zLDAiLz4NCgkJPHBhdGggY2xhc3M9InN0MjQiIGQ9Ik0yNjMuOCw0MjQuNWMwLDAsMTAuMSw3LjYsMjQuNSwwYzAsMCwyMy42LDcuNiw0Ny4yLDBjMCwwLDExLjIsNy45LDI0LjMsMCIvPg0KCQk8cGF0aCBjbGFzcz0ic3QyNCIgZD0iTTI2My44LDQyOS43YzAsMCwxMC4xLDcuNiwyNC41LDBjMCwwLDIzLjYsNy42LDQ3LjIsMGMwLDAsMTEuMiw3LjksMjQuMywwIi8+DQoJCTxwYXRoIGNsYXNzPSJzdDI0IiBkPSJNMjYzLjgsNDM1YzAsMCwxMC4xLDcuNiwyNC41LDBjMCwwLDIzLjYsNy42LDQ3LjIsMGMwLDAsMTEuMiw3LjksMjQuMywwIi8+DQoJCTxwYXRoIGNsYXNzPSJzdDI0IiBkPSJNMjYzLjgsNDQwLjNjMCwwLDEwLjEsNy42LDI0LjUsMGMwLDAsMjMuNiw3LjYsNDcuMiwwYzAsMCwxMS4yLDcuOSwyNC4zLDAiLz4NCgkJPHBhdGggY2xhc3M9InN0MjQiIGQ9Ik0yNjMuOCw0NDUuNmMwLDAsMTAuMSw3LjYsMjQuNSwwYzAsMCwyMy42LDcuNiw0Ny4yLDBjMCwwLDExLjIsNy45LDI0LjMsMCIvPg0KCQk8cGF0aCBjbGFzcz0ic3QyNCIgZD0iTTI2My44LDQ1MC45YzAsMCwxMC4xLDcuNiwyNC41LDBjMCwwLDIzLjYsNy42LDQ3LjIsMGMwLDAsMTEuMiw3LjksMjQuMywwIi8+DQoJCTxwYXRoIGNsYXNzPSJzdDI0IiBkPSJNMjYzLjgsNDU2LjJjMCwwLDEwLjEsNy42LDI0LjUsMGMwLDAsMjMuNiw3LjYsNDcuMiwwYzAsMCwxMS4yLDcuOSwyNC4zLDAiLz4NCgkJPHBhdGggY2xhc3M9InN0MjQiIGQ9Ik0yNjMuOCw0NjEuNWMwLDAsMTAuMSw3LjYsMjQuNSwwYzAsMCwyMy42LDcuNiw0Ny4yLDBjMCwwLDExLjIsNy45LDI0LjMsMCIvPg0KCTwvZz4NCgk8Zz4NCgkJPGc+DQoJCQk8ZGVmcz4NCgkJCQk8Y2lyY2xlIGlkPSJTVkdJRF8zXyIgY3g9IjMxMS44IiBjeT0iMjI2LjYiIHI9IjE3MS44Ii8+DQoJCQk8L2RlZnM+DQoJCQk8Y2xpcFBhdGggaWQ9IlNWR0lEXzRfIj4NCgkJCQk8dXNlIHhsaW5rOmhyZWY9IiNTVkdJRF8zXyIgIHN0eWxlPSJvdmVyZmxvdzp2aXNpYmxlOyIvPg0KCQkJPC9jbGlwUGF0aD4NCgkJCTxwYXRoIGNsYXNzPSJzdDI1IiBkPSJNMzg5LDM4NC43bC0xNS42LTZjMC4yLTIsMC4zLTQuMSwwLjMtNi4yYzAtMi45LTAuMi01LjctMC42LTguNWwxMS42LTcuN2wtNi40LTE2LjdsLTEyLDMuNA0KCQkJCWMtMi41LTQuNy01LjYtOS4xLTkuMS0xM2w2LTExLjZsLTE0LjQtMTAuMmwtOC44LDguNmMtOC44LTQuNi0xOC44LTcuMy0yOS40LTcuM2MtOS43LDAtMTguOSwyLjItMjcuMSw2LjFsLTguOC05LjJsLTEyLjksMTAuMw0KCQkJCWw1LjMsMTAuMmMtNC4xLDMuOS03LjYsOC4zLTEwLjUsMTMuMmwtMTEuNS0zLjRsLTYuMywxNi44bDEwLjIsNmMtMC45LDQuMi0xLjQsOC42LTEuNCwxMy4xYzAsMC45LDAsMS44LDAuMSwyLjdsLTE3LjEsNy4xDQoJCQkJbDYuOSwxNS4ybDEzLjgtMy45YzguNywyNC41LDMyLDQyLDU5LjUsNDJjMjYuMywwLDQ4LjgtMTYuMSw1OC4zLTM5bDEyLjMsMy43TDM4OSwzODQuN3ogTTMxMS4xLDQyOGMtMjgsMC01MC43LTIxLjMtNTAuNy00Ny43DQoJCQkJYzAtMjYuMywyMi43LTQ3LjcsNTAuNy00Ny43YzI4LDAsNTAuNywyMS4zLDUwLjcsNDcuN0MzNjEuOCw0MDYuNywzMzkuMSw0MjgsMzExLjEsNDI4eiIvPg0KCQk8L2c+DQoJCTxjaXJjbGUgY2xhc3M9InN0MjYiIGN4PSIzMTEuOCIgY3k9IjIyNi42IiByPSIxNzEuOCIvPg0KCTwvZz4NCgk8cGF0aCBjbGFzcz0ic3QyNyIgZD0iTTM1Mi42LDMyNC43bC01LjgsNC45Yy00LjEtNC4zLTEwLjEtNy43LTE3LjItOS42Yy00LTEtOC4zLTEuNi0xMi44LTEuNmMtNSwwLTkuOCwwLjctMTQuMiwyDQoJCWMtMTIuOCwzLjgtMjEuOCwxMi42LTIxLjgsMjIuOGMwLDQuNywxLjksOS4xLDUuMSwxMi44bC02LjMsMTMuNWMtMTAuOS02LjItMTcuOS0xNS42LTE3LjktMjYuMWMwLTE3LjksMjAuMi0zMi41LDQ1LjktMzMuOA0KCQljMS4yLTAuMSwyLjQtMC4xLDMuNy0wLjFjNS4yLDAsMTAuMiwwLjUsMTQuOSwxLjZDMzM3LjEsMzEzLjUsMzQ2LjQsMzE4LjMsMzUyLjYsMzI0Ljd6IE0zNDguOCwzNTQuNmMtMS4yLDEuNi0yLjcsMy4yLTQuNCw0LjYNCgkJYy00LjEsMy40LTkuNSw2LjEtMTUuNyw3LjZjLTMuNywwLjktNy44LDEuNC0xMS45LDEuNGMtOC45LDAtMTctMi4yLTIzLjItNS45bC01LjIsMTEuNGM2LjksMi41LDE0LjcsMy45LDIzLDMuOQ0KCQljNi40LDAsMTIuNS0wLjgsMTguMS0yLjNjNi44LTEuOCwxMi45LTQuNywxNy45LTguM2MzLjEtMi4yLDUuNy00LjcsNy44LTcuNEwzNDguOCwzNTQuNnogTTM1NS4yLDM3OC4ydjcuNUgzMjh2LTcuM2wxLjUtMy40DQoJCWM2LjgtMS44LDEyLjktNC43LDE3LjktOC4zbDEuMiwzLjNMMzU1LjIsMzc4LjJ6IE0zMjYuMywzMTEuMWMtNC43LTEtOS43LTEuNi0xNC45LTEuNmMtMS4yLDAtMi41LDAtMy43LDAuMWwxLjQtM2wtNC43LTF2LTcuOQ0KCQloMTYuOEwzMjYuMywzMTEuMXogTTM0NC40LDM1OS4xYy00LjEsMy40LTkuNSw2LjEtMTUuNyw3LjZsLTQuMi0xMS4yaC0yNy45bC0zLjEsNi43bC01LjIsMTEuNGwtMC41LDFsMi4zLDMuNnY3LjZoLTE4Ljd2LTcuMw0KCQlsOC4xLTguOUwyODYsMzU2bDE2LjctMzUuNmM0LjMtMS4zLDkuMS0yLDE0LjItMmM0LjUsMCw4LjgsMC42LDEyLjgsMS42TDM0NC40LDM1OS4xeiBNMzIyLjIsMzQ4LjlsLTEwLjgtMjcuMkwzMDAsMzQ4LjlIMzIyLjJ6Ig0KCQkvPg0KCTxnPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDIyIiBkPSJNMzAzLjUsODUuOGMwLDAtMzIuMS0wLjEtMzguMyw3LjQiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDIyIiBkPSJNMjkzLjcsOTguMWMwLDAtMjMuNi0wLjYtMzUuMiw0LjciLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDIyIiBkPSJNMjgyLjQsMTA3LjJjMCwwLTIxLjUtMC41LTI5LDQuNiIvPg0KCQk8L2c+DQoJCTxwYXRoIGNsYXNzPSJzdDI4IiBkPSJNMjQwLjQsMzQxYzAsMC00Ny4yLTM0LjEtNTcuMS03OS4zcy0xNC44LTgwLjYsMjAuNy0xMTYuMXMzOC4zLTM0LjUsNDIuOC0zNi40Ii8+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yNzMsMTEzYzAsMC0xMy44LDE3LjItMzMuNSwzYzAsMCw5LjctMTAuNywyNC40LTUuM0MyNjguNCwxMTIuMywyNzEuOSwxMTMuMywyNzMsMTEzeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yNTIuOCwxMTRjMCwwLDEzLjcsMi4xLDIwLjItMC45Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTI1OS40LDEyMS4yYzAsMC0xMy44LDE3LjItMzMuNSwzYzAsMCw5LjctMTAuNywyNC40LTUuM0MyNTQuOCwxMjAuNSwyNTguMywxMjEuNSwyNTkuNCwxMjEuMnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjM5LjIsMTIyLjJjMCwwLDEzLjcsMi4xLDIwLjItMC45Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTI0Mi4yLDEzMS43YzAsMC0yMC4yLTE2LjctMzAuNCwzLjJjMCwwLDcuNCw5LDIxLjksMi4xQzIzOC41LDEzNC43LDIzOC44LDEzMi40LDI0Mi4yLDEzMS43eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMjAuNCwxMzRjMCwwLDguNi0yLjksMjEuOC0yLjMiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjMwLjYsMTQ0LjZjMCwwLTIwLjItMTUuNy0zMC40LDNjMCwwLDYuNSw3LjYsMjEsMS4yQzIyNi4xLDE0Ni41LDIyNy4yLDE0NS4yLDIzMC42LDE0NC42eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMDguOCwxNDYuN2MwLDAsOC42LTIuOCwyMS44LTIuMSIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMjAuMSwxNTUuMWMwLDAtMjIuNy0xMi43LTI5LjQsOC40YzAsMCw3LjgsNi43LDIwLjktMi40QzIxNS45LDE1Ny44LDIxNi44LDE1Ni4zLDIyMC4xLDE1NS4xeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xOTksMTYxYzAsMCw4LTQuMywyMS4xLTUuOSIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMTIuNCwxNjUuN2MwLDAtMjQuNC05LjEtMjcuNywxMi44YzAsMCw4LjcsNS40LDIwLjMtNS42QzIwOC44LDE2OSwyMDkuNCwxNjcuNCwyMTIuNCwxNjUuN3oiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTkyLjUsMTc0LjhjMCwwLDcuMi01LjUsMTkuOS05LjEiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjA2LjQsMTc5YzAsMC0yNS41LTcuNi0yOC44LDE0LjNjMCwwLDkuOCwzLjksMjEuNC03LjJDMjAyLjcsMTgyLjQsMjAzLjQsMTgwLjgsMjA2LjQsMTc5eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xODYuNSwxODguMmMwLDAsNy4yLTUuNSwxOS45LTkuMSIvPg0KCQk8L2c+DQoJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjM1LjcsMzI4LjhjMCwwLTYuOC03LjctNi4zLTI0LjkiLz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTI1MC45LDg3LjVjMCwwLTIwLjIsMTUtMTYsMzAuNWMwLDAsMTYuNC0zLjcsMTYuMy0yMi4xQzI1MS4xLDkzLDI1MC42LDkwLjYsMjUwLjksODcuNXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjQyLjcsMTA3LjJjMCwwLDMuMi0xMy40LDguMi0xOS43Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIzNS4yLDk1LjljMCwwLTE4LjksMTQuMi0xMy45LDI5LjZjMCwwLDE1LjctMi44LDE0LjctMjEuMUMyMzUuNywxMDEuNCwyMzUsOTksMjM1LjIsOTUuOXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjI3LDExNC4xYzAsMCwzLjUtMTEuNiw4LjItMTguMiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMTksMTA1LjZjMCwwLTE2LjIsMTcuMi04LjgsMzEuNWMwLDAsMTUtNS40LDExLTIzLjNDMjIwLjUsMTEwLjksMjE5LjQsMTA4LjcsMjE5LDEwNS42eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMTQuMywxMjYuNmMwLDAsMS4yLTEzLjcsNC43LTIxIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIwNi4xLDExOC45YzAsMC0xNi43LDE5LTguMiwzNGMwLDAsMTUuOS02LjMsMTAuOC0yNS4zQzIwNy45LDEyNC41LDIwNi42LDEyMi4yLDIwNi4xLDExOC45eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMDEuOSwxNDEuNmMwLDAsMC43LTE0LjcsNC4yLTIyLjYiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTkxLjYsMTM0LjljMCwwLTE0LjEsMjEtMy44LDM0LjhjMCwwLDE0LjktOC4zLDcuNS0yNi41QzE5NC4xLDE0MC4zLDE5Mi42LDEzOC4xLDE5MS42LDEzNC45eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xOTEuNCwxNTcuOGMwLDAtMi4yLTE0LjYsMC4zLTIyLjkiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTgxLjksMTUyLjljMCwwLTE2LjksMjAuNiwwLDMwLjlDMTgxLjksMTgzLjgsMTkzLjcsMTcxLjcsMTgxLjksMTUyLjl6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE4MS40LDE3NC4xYzAsMC0yLTYuMSwwLjUtMjEuMSIvPg0KCQk8L2c+DQoJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTcwLjYsMTcwLjljMCwwLTExLjksMjcuMSw4LjksMzEuN0MxNzkuNSwyMDIuNywxODguNywxODUuNywxNzAuNiwxNzAuOXoiLz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE2MC4yLDIxMi40YzAsMC0zLDI5LjUsMTkuMiwyOEMxNzkuMywyNDAuNCwxODIuOSwyMjEuOSwxNjAuMiwyMTIuNHoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTcyLjgsMjMxLjljMCwwLTIuMy01LjYtMTIuNi0xOS41Ii8+DQoJCTwvZz4NCgkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xNzYuOCwxOTEuOGMwLDAtMi44LTE0LjktNi4xLTIwLjkiLz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIwNS43LDE4OS44YzAsMC0zMC4yLTQtMjguOSwyMy43YzAsMCwxMi0zLjUsMjIuMy0xNS43QzIwMi40LDE5My41LDIwMi45LDE5MS44LDIwNS43LDE4OS44eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xODMuMywyMDMuNGMwLDAsNS45LTkuMywyMi40LTEzLjYiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTYzLjIsMTg5LjljMCwwLTguNCwyOC45LDEzLjcsMzEuNUMxNzYuOCwyMjEuNCwxODMuNywyMDMuNCwxNjMuMiwxODkuOXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTcyLDIxMS40YzAsMC0xLjItNS45LTguOS0yMS41Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE5Ny44LDIyMC4zYzAsMC0zMy4zLDExLTE2LjMsMzMuM2MwLDAsOS44LTYsMTMuMy0yMy40QzE5Ni4zLDIyNS4xLDE5Ni4xLDIyMy4zLDE5Ny44LDIyMC4zeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xODIuNSwyNDEuNmMwLDAsMS44LTEwLjksMTUuNC0yMS4yIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIwMC4xLDIwMi42YzAsMC0zNC42LDUuNS0yMS41LDMwLjJjMCwwLDEwLjctNC4zLDE2LjktMjFDMTk3LjgsMjA3LDE5Ny45LDIwNS4zLDIwMC4xLDIwMi42eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xODEuNSwyMjEuMWMwLDAsMy41LTEwLjUsMTguNi0xOC40Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE2MC44LDIzNC40YzAsMCwzLDMwLjUsMjQuNSwyNC45QzE4NS4zLDI1OS4zLDE4NC45LDIzOS41LDE2MC44LDIzNC40eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xNzYuOCwyNTEuMmMwLDAtMy4zLTUuMS0xNi0xNi44Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE5OC4yLDIzNy41YzAsMC0yOS44LDE4LjUtOC4xLDM2LjJjMCwwLDguMi04LjEsNy41LTI1LjlDMTk3LjgsMjQyLjQsMTk3LjEsMjQwLjgsMTk4LjIsMjM3LjV6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE4OC4yLDI2MS43YzAsMC0wLjgtMTEsMTAtMjQuMiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xNjMuMiwyNTUuNmMwLDAsNy4xLDMxLjksMjguMywyMy4xQzE5MS40LDI3OC43LDE4OCwyNTcuMiwxNjMuMiwyNTUuNnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTgxLjEsMjcwLjNjMCwwLTMuOS00LjctMTgtMTQuNyIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMDIuMywyNTAuMmMwLDAtMjkuNSwxOC45LTcuNiwzNi4zYzAsMCw4LjEtOC4yLDcuMS0yNkMyMDEuOSwyNTUuMiwyMDEuMywyNTMuNSwyMDIuMywyNTAuMnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTkzLjIsMjc2LjRjMCwwLTEuNS0xMi44LDkuMS0yNi4yIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTE2OCwyNzYuOWMwLDAsOC45LDI2LjUsMjkuMiwxNy4zQzE5Ny4xLDI5NC4yLDE5Mi44LDI3NS40LDE2OCwyNzYuOXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTg3LjYsMjg5LjJjMCwwLTQuNC00LjItMTkuNy0xMi4zIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIwNi40LDI2OS41YzAsMC0yNy45LDIxLjItNC43LDM2LjhjMCwwLDcuNC04LjgsNS4xLTI2LjVDMjA2LjUsMjc0LjUsMjA1LjcsMjcyLjksMjA2LjQsMjY5LjV6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIwMS41LDI5NS4yYzAsMC00LjYtMTEuNSw0LjktMjUuNiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xNzYuOCwyOTMuNmMwLDAsOC45LDI2LjUsMjkuMiwxNy4zQzIwNiwzMTAuOSwyMDEuNywyOTIuMSwxNzYuOCwyOTMuNnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMTk2LjUsMzA1LjljMCwwLTQuNC00LjItMTkuNy0xMi4zIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIxMS42LDI3OWMwLDAtMjIuMSwyNy4yLDQuMSwzNi44YzAsMCw1LjEtMTAuMy0xLjMtMjYuOUMyMTIuOSwyODMuOCwyMTEuOCwyODIuNSwyMTEuNiwyNzl6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIxMC4xLDMwNS4yYzAsMC00LjMtMTAuMiwxLjYtMjYuMSIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0xODkuMiwzMTIuNGMwLDAsMTQuMywyNC43LDMyLjksMTJDMjIyLjEsMzI0LjMsMjE0LDMwNi41LDE4OS4yLDMxMi40eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMTAuNSwzMTkuNGMwLDAtNC4yLTIuMy0yMS4zLTciLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjE5LjQsMjk1LjJjMCwwLTE3LjgsMjkuOSwxMC45LDM0LjdjMCwwLDMuNC0xMC44LTYuMi0yNS43QzIyMS41LDI5OS42LDIyMC4xLDI5OC41LDIxOS40LDI5NS4yeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yMjIuNSwzMTQuMmMwLDAtMy40LTIuNS0zLjEtMTkiLz4NCgkJPC9nPg0KCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIyOS40LDMwMy45YzAsMC0xMi43LDE5LjIsNS42LDMwLjljMCwwLDkuNy01LjUtMi42LTI1LjRDMjMwLDMwNS45LDIyOS40LDMwMy45LDIyOS40LDMwMy45eiIvPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMjAxLDMyOC41YzAsMCwxOS4yLDE4LjgsMzIuNSw3LjRjMCwwLTcuOS0xMi4yLTI0LjMtOS40QzIwNC41LDMyNy41LDIwNCwzMjguMywyMDEsMzI4LjV6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTIyMy42LDMzNS4zYzAsMC0xMy45LTYuOC0yMi42LTYuOCIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0yNjkuMyw4NS4zYzAsMC0yMi45LDUuOS0yNC4yLDIxLjljMCwwLDE1LjYsMy40LDIxLjctMTMuOEMyNjcuNyw5MC42LDI2OCw4OC4xLDI2OS4zLDg1LjN6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTI1NC45LDEwMS4xYzAsMCw3LjUtMTEuNSwxNC40LTE1LjgiLz4NCgkJPC9nPg0KCTwvZz4NCgk8Zz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyMiIgZD0iTTMyMC4xLDg1LjhjMCwwLDMyLjEtMC4xLDM4LjMsNy40Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyMiIgZD0iTTMyOS45LDk4LjFjMCwwLDIzLjYtMC42LDM1LjIsNC43Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyMiIgZD0iTTM0MS4zLDEwNy4yYzAsMCwyMS41LTAuNSwyOSw0LjYiLz4NCgkJPC9nPg0KCQk8cGF0aCBjbGFzcz0ic3QyOCIgZD0iTTM4My4yLDM0MWMwLDAsNDcuMi0zNC4xLDU3LjEtNzkuM2M5LjktNDUuMSwxNC44LTgwLjYtMjAuNy0xMTYuMXMtMzguMy0zNC41LTQyLjgtMzYuNCIvPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzUwLjYsMTEzYzAsMCwxMy44LDE3LjIsMzMuNSwzYzAsMC05LjctMTAuNy0yNC40LTUuM0MzNTUuMywxMTIuMywzNTEuNywxMTMuMywzNTAuNiwxMTN6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTM3MC44LDExNGMwLDAtMTMuNywyLjEtMjAuMi0wLjkiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzY0LjIsMTIxLjJjMCwwLDEzLjgsMTcuMiwzMy41LDNjMCwwLTkuNy0xMC43LTI0LjQtNS4zQzM2OC45LDEyMC41LDM2NS4zLDEyMS41LDM2NC4yLDEyMS4yeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0zODQuNCwxMjIuMmMwLDAtMTMuNywyLjEtMjAuMi0wLjkiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzgxLjQsMTMxLjdjMCwwLDIwLjItMTYuNywzMC40LDMuMmMwLDAtNy40LDktMjEuOSwyLjFDMzg1LjEsMTM0LjcsMzg0LjgsMTMyLjQsMzgxLjQsMTMxLjd6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQwMy4yLDEzNGMwLDAtOC42LTIuOS0yMS44LTIuMyIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0zOTMsMTQ0LjZjMCwwLDIwLjItMTUuNywzMC40LDNjMCwwLTYuNSw3LjYtMjEsMS4yQzM5Ny41LDE0Ni41LDM5Ni40LDE0NS4yLDM5MywxNDQuNnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDE0LjgsMTQ2LjdjMCwwLTguNi0yLjgtMjEuOC0yLjEiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDAzLjYsMTU1LjFjMCwwLDIyLjctMTIuNywyOS40LDguNGMwLDAtNy44LDYuNy0yMC45LTIuNEM0MDcuNywxNTcuOCw0MDYuOCwxNTYuMyw0MDMuNiwxNTUuMXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDI0LjYsMTYxYzAsMC04LTQuMy0yMS4xLTUuOSIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MTEuMiwxNjUuN2MwLDAsMjQuNC05LjEsMjcuNywxMi44YzAsMC04LjcsNS40LTIwLjMtNS42QzQxNC45LDE2OSw0MTQuMiwxNjcuNCw0MTEuMiwxNjUuN3oiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDMxLjEsMTc0LjhjMCwwLTcuMi01LjUtMTkuOS05LjEiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDE3LjMsMTc5YzAsMCwyNS41LTcuNiwyOC44LDE0LjNjMCwwLTkuOCwzLjktMjEuNC03LjJDNDIwLjksMTgyLjQsNDIwLjIsMTgwLjgsNDE3LjMsMTc5eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MzcuMiwxODguMmMwLDAtNy4yLTUuNS0xOS45LTkuMSIvPg0KCQk8L2c+DQoJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzg4LDMyOC44YzAsMCw2LjgtNy43LDYuMy0yNC45Ii8+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0zNzIuOCw4Ny41YzAsMCwyMC4yLDE1LDE2LDMwLjVjMCwwLTE2LjQtMy43LTE2LjMtMjIuMUMzNzIuNSw5MywzNzMsOTAuNiwzNzIuOCw4Ny41eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0zODAuOSwxMDcuMmMwLDAtMy4yLTEzLjQtOC4yLTE5LjciLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzg4LjUsOTUuOWMwLDAsMTguOSwxNC4yLDEzLjksMjkuNmMwLDAtMTUuNy0yLjgtMTQuNy0yMS4xQzM4Ny45LDEwMS40LDM4OC42LDk5LDM4OC41LDk1Ljl6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTM5Ni42LDExNC4xYzAsMC0zLjUtMTEuNi04LjItMTguMiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MDQuNiwxMDUuNmMwLDAsMTYuMiwxNy4yLDguOCwzMS41YzAsMC0xNS01LjQtMTEtMjMuM0M0MDMuMSwxMTAuOSw0MDQuMiwxMDguNyw0MDQuNiwxMDUuNnoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDA5LjMsMTI2LjZjMCwwLTEuMi0xMy43LTQuNy0yMSIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MTcuNSwxMTguOWMwLDAsMTYuNywxOSw4LjIsMzRjMCwwLTE1LjktNi4zLTEwLjgtMjUuM0M0MTUuOCwxMjQuNSw0MTcsMTIyLjIsNDE3LjUsMTE4Ljl6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQyMS43LDE0MS42YzAsMC0wLjctMTQuNy00LjItMjIuNiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MzIsMTM0LjljMCwwLDE0LjEsMjEsMy44LDM0LjhjMCwwLTE0LjktOC4zLTcuNS0yNi41QzQyOS41LDE0MC4zLDQzMS4xLDEzOC4xLDQzMiwxMzQuOXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDMyLjMsMTU3LjhjMCwwLDIuMi0xNC42LTAuMy0yMi45Ii8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ0MS43LDE1Mi45YzAsMCwxNi45LDIwLjYsMCwzMC45QzQ0MS43LDE4My44LDQyOS45LDE3MS43LDQ0MS43LDE1Mi45eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00NDIuMiwxNzQuMWMwLDAsMi02LjEtMC41LTIxLjEiLz4NCgkJPC9nPg0KCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ1MywxNzAuOWMwLDAsMTEuOSwyNy4xLTguOSwzMS43QzQ0NC4xLDIwMi43LDQzNC45LDE4NS43LDQ1MywxNzAuOXoiLz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ2My41LDIxMi40YzAsMCwzLDI5LjUtMTkuMiwyOEM0NDQuMywyNDAuNCw0NDAuOCwyMjEuOSw0NjMuNSwyMTIuNHoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDUwLjgsMjMxLjljMCwwLDIuMy01LjYsMTIuNi0xOS41Ii8+DQoJCTwvZz4NCgkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00NDYuOSwxOTEuOGMwLDAsMi44LTE0LjksNi4xLTIwLjkiLz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQxNy45LDE4OS44YzAsMCwzMC4yLTQsMjguOSwyMy43YzAsMC0xMi0zLjUtMjIuMy0xNS43QzQyMS4yLDE5My41LDQyMC43LDE5MS44LDQxNy45LDE4OS44eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00NDAuMywyMDMuNGMwLDAtNS45LTkuMy0yMi40LTEzLjYiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDYwLjUsMTg5LjljMCwwLDguNCwyOC45LTEzLjcsMzEuNUM0NDYuOCwyMjEuNCw0MzkuOSwyMDMuNCw0NjAuNSwxODkuOXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDUxLjYsMjExLjRjMCwwLDEuMi01LjksOC45LTIxLjUiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDI1LjgsMjIwLjNjMCwwLDMzLjMsMTEsMTYuMywzMy4zYzAsMC05LjgtNi0xMy4zLTIzLjRDNDI3LjMsMjI1LjEsNDI3LjYsMjIzLjMsNDI1LjgsMjIwLjN6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ0MS4yLDI0MS42YzAsMC0xLjgtMTAuOS0xNS40LTIxLjIiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDIzLjUsMjAyLjZjMCwwLDM0LjYsNS41LDIxLjUsMzAuMmMwLDAtMTAuNy00LjMtMTYuOS0yMUM0MjUuOCwyMDcsNDI1LjcsMjA1LjMsNDIzLjUsMjAyLjZ6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ0Mi4xLDIyMS4xYzAsMC0zLjUtMTAuNS0xOC42LTE4LjQiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDYyLjgsMjM0LjRjMCwwLTMsMzAuNS0yNC41LDI0LjlDNDM4LjQsMjU5LjMsNDM4LjgsMjM5LjUsNDYyLjgsMjM0LjR6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ0Ni44LDI1MS4yYzAsMCwzLjMtNS4xLDE2LTE2LjgiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDI1LjUsMjM3LjVjMCwwLDI5LjgsMTguNSw4LjEsMzYuMmMwLDAtOC4yLTguMS03LjUtMjUuOUM0MjUuOSwyNDIuNCw0MjYuNSwyNDAuOCw0MjUuNSwyMzcuNXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDM1LjUsMjYxLjdjMCwwLDAuOC0xMS0xMC0yNC4yIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ2MC41LDI1NS42YzAsMC03LjEsMzEuOS0yOC4zLDIzLjFDNDMyLjIsMjc4LjcsNDM1LjYsMjU3LjIsNDYwLjUsMjU1LjZ6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQ0Mi41LDI3MC4zYzAsMCwzLjktNC43LDE4LTE0LjciLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDIxLjQsMjUwLjJjMCwwLDI5LjUsMTguOSw3LjYsMzYuM2MwLDAtOC4xLTguMi03LjEtMjZDNDIxLjcsMjU1LjIsNDIyLjMsMjUzLjUsNDIxLjQsMjUwLjJ6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQzMC41LDI3Ni40YzAsMCwxLjUtMTIuOC05LjEtMjYuMiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00NTUuNywyNzYuOWMwLDAtOC45LDI2LjUtMjkuMiwxNy4zQzQyNi41LDI5NC4yLDQzMC44LDI3NS40LDQ1NS43LDI3Ni45eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MzYsMjg5LjJjMCwwLDQuNC00LjIsMTkuNy0xMi4zIi8+DQoJCTwvZz4NCgkJPGc+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQxNy4yLDI2OS41YzAsMCwyNy45LDIxLjIsNC43LDM2LjhjMCwwLTcuNC04LjgtNS4xLTI2LjVDNDE3LjEsMjc0LjUsNDE3LjksMjcyLjksNDE3LjIsMjY5LjV6Ii8+DQoJCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTQyMi4xLDI5NS4yYzAsMCw0LjYtMTEuNS00LjktMjUuNiIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00NDYuOCwyOTMuNmMwLDAtOC45LDI2LjUtMjkuMiwxNy4zQzQxNy42LDMxMC45LDQyMS45LDI5Mi4xLDQ0Ni44LDI5My42eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MjcuMSwzMDUuOWMwLDAsNC40LTQuMiwxOS43LTEyLjMiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDEyLDI3OWMwLDAsMjIuMSwyNy4yLTQuMSwzNi44YzAsMC01LjEtMTAuMywxLjMtMjYuOUM0MTAuNywyODMuOCw0MTEuOSwyODIuNSw0MTIsMjc5eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MTMuNSwzMDUuMmMwLDAsNC4zLTEwLjItMS42LTI2LjEiLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDM0LjQsMzEyLjRjMCwwLTE0LjMsMjQuNy0zMi45LDEyQzQwMS41LDMyNC4zLDQwOS42LDMwNi41LDQzNC40LDMxMi40eiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MTMuMSwzMTkuNGMwLDAsNC4yLTIuMywyMS4zLTciLz4NCgkJPC9nPg0KCQk8Zz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDA0LjMsMjk1LjJjMCwwLDE3LjgsMjkuOS0xMC45LDM0LjdjMCwwLTMuNC0xMC44LDYuMi0yNS43QzQwMi4xLDI5OS42LDQwMy41LDI5OC41LDQwNC4zLDI5NS4yeiIvPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MDEuMiwzMTQuMmMwLDAsMy40LTIuNSwzLjEtMTkiLz4NCgkJPC9nPg0KCQk8cGF0aCBjbGFzcz0ic3QyOSIgZD0iTTM5NC4zLDMwMy45YzAsMCwxMi43LDE5LjItNS42LDMwLjljMCwwLTkuNy01LjUsMi42LTI1LjRDMzkzLjcsMzA1LjksMzk0LjMsMzAzLjksMzk0LjMsMzAzLjl6Ii8+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik00MjIuNiwzMjguNWMwLDAtMTkuMiwxOC44LTMyLjUsNy40YzAsMCw3LjktMTIuMiwyNC4zLTkuNEM0MTkuMSwzMjcuNSw0MTkuNiwzMjguMyw0MjIuNiwzMjguNXoiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNNDAwLDMzNS4zYzAsMCwxMy45LTYuOCwyMi42LTYuOCIvPg0KCQk8L2c+DQoJCTxnPg0KCQkJPHBhdGggY2xhc3M9InN0MjkiIGQ9Ik0zNTQuMyw4NS4zYzAsMCwyMi45LDUuOSwyNC4yLDIxLjljMCwwLTE1LjYsMy40LTIxLjctMTMuOEMzNTUuOSw5MC42LDM1NS42LDg4LjEsMzU0LjMsODUuM3oiLz4NCgkJCTxwYXRoIGNsYXNzPSJzdDI5IiBkPSJNMzY4LjcsMTAxLjFjMCwwLTcuNS0xMS41LTE0LjQtMTUuOCIvPg0KCQk8L2c+DQoJPC9nPg0KPC9nPg0KPC9zdmc+DQo=" className="logo-cand" alt="Logo Công an Nhân dân" />
           <div className="logo-cap-tren">{CONFIG.capTren}</div>
           <h1>{CONFIG.donVi}</h1>
-          <span className="version-tag">v7.0 HD26</span>
+          <span className="version-tag">Vì tương lai thế hệ trẻ</span>
         </div>
         {secs.map(sec=>(
           <div key={sec} className="sidebar-section">
